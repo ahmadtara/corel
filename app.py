@@ -1,65 +1,61 @@
 import streamlit as st
-from reportlab.pdfgen import canvas
-from reportlab.lib.units import mm
+import xml.etree.ElementTree as ET
 
-# ==========================
-# Fungsi untuk generate PDF
-# ==========================
-def generate_pdf(project_code, fat_a, fat_b, fat_c, fat_d, width_mm, height_mm):
-    file_name = "output.pdf"
+st.title("🖊️ Ganti Teks di Template SVG (Corel)")
 
-    # Konversi ke mm sesuai ukuran Corel
-    width, height = width_mm * mm, height_mm * mm
-    c = canvas.Canvas(file_name, pagesize=(width, height))
+# Upload SVG template
+uploaded_file = st.file_uploader("Upload file SVG dari Corel", type=["svg"])
 
-    # Judul project (posisi atas tengah)
-    c.setFont("Helvetica-Bold", 18)
-    c.drawCentredString(width / 2, height - 15*mm, project_code)
+if uploaded_file:
+    tree = ET.parse(uploaded_file)
+    root = tree.getroot()
 
-    # Mulai posisi FAT
-    y = height - 30*mm
-    x_start = 20*mm
+    # Input teks pengganti
+    old_text = st.text_input("Teks lama (misalnya: OAKN1.036)")
+    new_text = st.text_input("Teks baru (misalnya: BKSN2.045)")
 
-    def draw_fat(prefix, count, y_start):
-        x = x_start
-        y = y_start
-        for i in range(1, count + 1):
-            text = f"FAT {prefix}{i:02d}"
-            c.setFont("Helvetica-Bold", 12)
-            c.drawString(x, y, text)
-            x += 30*mm  # jarak antar FAT
-            if x > (width - 30*mm):  # kalau mentok kanan, turun baris
-                x = x_start
-                y -= 8*mm
-        return y - 10*mm
+    fat_a = st.number_input("Jumlah FAT A", min_value=0, max_value=100, value=8)
+    fat_b = st.number_input("Jumlah FAT B", min_value=0, max_value=100, value=8)
+    fat_c = st.number_input("Jumlah FAT C", min_value=0, max_value=100, value=8)
+    fat_d = st.number_input("Jumlah FAT D", min_value=0, max_value=100, value=8)
 
-    # Generate FAT A-D
-    y = draw_fat("A", fat_a, y)
-    y = draw_fat("B", fat_b, y)
-    y = draw_fat("C", fat_c, y)
-    y = draw_fat("D", fat_d, y)
+    if st.button("🔄 Proses Replace"):
+        count_replace = 0
+        for elem in root.iter():
+            if elem.text and old_text in elem.text:
+                elem.text = elem.text.replace(old_text, new_text)
+                count_replace += 1
 
-    c.save()
-    return file_name
+        # Update FAT otomatis
+        fat_sections = {
+            "FAT A": fat_a,
+            "FAT B": fat_b,
+            "FAT C": fat_c,
+            "FAT D": fat_d,
+        }
 
-# ==========================
-# Streamlit UI
-# ==========================
-st.title("📑 Generator Label FAT (Export ke PDF untuk Corel)")
+        for elem in root.iter():
+            if elem.text:
+                for prefix, limit in fat_sections.items():
+                    if elem.text.startswith(prefix):
+                        # Ambil nomor FAT sekarang
+                        try:
+                            num = int(elem.text.split(" ")[-1][1:])  # contoh FAT A01 → 1
+                        except:
+                            continue
+                        if num > limit:
+                            elem.text = ""  # hapus kalau lebih dari limit
 
-# Input ukuran halaman (sesuaikan dengan ukuran Corel kamu)
-width_mm = st.number_input("Lebar Halaman (mm)", 50, 1000, 300)
-height_mm = st.number_input("Tinggi Halaman (mm)", 50, 1000, 200)
+        # Simpan hasil
+        output_file = "output.svg"
+        tree.write(output_file, encoding="utf-8", xml_declaration=True)
 
-# Input teks utama dan jumlah FAT
-project_code = st.text_input("Masukkan Kode Project", "OAKN1.036")
-fat_a = st.number_input("Jumlah FAT A", 0, 200, 8)
-fat_b = st.number_input("Jumlah FAT B", 0, 200, 8)
-fat_c = st.number_input("Jumlah FAT C", 0, 200, 8)
-fat_d = st.number_input("Jumlah FAT D", 0, 200, 8)
+        with open(output_file, "rb") as f:
+            st.download_button(
+                "⬇️ Download hasil SVG",
+                f,
+                file_name="output.svg",
+                mime="image/svg+xml"
+            )
 
-# Tombol generate
-if st.button("🚀 Generate PDF"):
-    file_path = generate_pdf(project_code, fat_a, fat_b, fat_c, fat_d, width_mm, height_mm)
-    with open(file_path, "rb") as f:
-        st.download_button("⬇️ Download PDF", f, file_name="output.pdf")
+        st.success(f"Teks '{old_text}' berhasil diganti jadi '{new_text}'. {count_replace} kali diganti.")
