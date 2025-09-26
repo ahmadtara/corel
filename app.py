@@ -19,10 +19,21 @@ def interpolate_point(lon1, lat1, lon2, lat2, ratio):
     lat = lat1 + (lat2 - lat1) * ratio
     return lon, lat
 
+def nearest_pole(lon, lat, poles):
+    """Cari pole terdekat dari titik (lon,lat)"""
+    best = None
+    best_d = float("inf")
+    for plon, plat in poles:
+        d = haversine(lon, lat, plon, plat)
+        if d < best_d:
+            best_d = d
+            best = (plon, plat)
+    return best
+
 # ----------------------
 # App Streamlit
 # ----------------------
-st.title("📍 Tambahkan Placemark Tiap 400m di Jalur Kabel")
+st.title("📍 Tambahkan Placemark Tiap 400m di Jalur Kabel (Snap ke Pole Terdekat)")
 
 uploaded_file = st.file_uploader("Upload file KML", type=["kml"])
 
@@ -31,16 +42,23 @@ if uploaded_file is not None:
     root = tree.getroot()
     ns = {"kml": "http://www.opengis.net/kml/2.2"}
 
+    # --- Ambil LineString path ---
     coords_text = root.find(".//kml:LineString/kml:coordinates", ns).text.strip()
     coords = [(float(c.split(",")[0]), float(c.split(",")[1])) for c in coords_text.split()]
 
-    # Hitung jarak kumulatif
+    # --- Ambil semua pole (Point) ---
+    poles = []
+    for pt in root.findall(".//kml:Placemark/kml:Point/kml:coordinates", ns):
+        x, y = map(float, pt.text.strip().split(",")[:2])
+        poles.append((x, y))
+
+    # --- Hitung jarak kumulatif ---
     distances = [0]
     for i in range(1, len(coords)):
         distances.append(distances[-1] + haversine(*coords[i-1], *coords[i]))
     total_length = distances[-1]
 
-    # Cari titik tiap 400m
+    # --- Cari titik tiap 400m ---
     interval = 400
     markers, target = [], interval
     while target <= total_length:
@@ -49,11 +67,13 @@ if uploaded_file is not None:
                 d_seg = distances[i] - distances[i-1]
                 ratio = (target - distances[i-1]) / d_seg
                 lon, lat = interpolate_point(*coords[i-1], *coords[i], ratio)
-                markers.append((target, lon, lat))
+                # snap ke pole terdekat
+                nlon, nlat = nearest_pole(lon, lat, poles)
+                markers.append((target, nlon, nlat))
                 break
         target += interval
 
-    # Tambahkan Placemark baru dengan nama SLACK-01 dst
+    # --- Tambahkan Placemark baru ---
     doc = root.find(".//kml:Document", ns)
     for idx, (dist, lon, lat) in enumerate(markers, start=1):
         pm = ET.Element("Placemark")
@@ -62,10 +82,10 @@ if uploaded_file is not None:
         ET.SubElement(pt, "coordinates").text = f"{lon},{lat},0"
         doc.append(pm)
 
-    # Simpan ke memori
+    # --- Simpan ke memori ---
     output = BytesIO()
     tree.write(output, encoding="utf-8", xml_declaration=True)
     output.seek(0)
 
-    st.success(f"✅ Berhasil! Panjang kabel ≈ {total_length:.2f} m, Marker: {len(markers)}")
+    st.success(f"✅ Panjang kabel ≈ {total_length:.2f} m, Marker ditambahkan: {len(markers)} (snap ke pole)")
     st.download_button("⬇️ Download KML Hasil", output, "POLE_SLACK.kml", "application/vnd.google-earth.kml+xml")
