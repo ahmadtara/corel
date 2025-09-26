@@ -14,11 +14,18 @@ if uploaded_file is not None:
         # Baca isi file ke memory
         file_content = uploaded_file.read()
 
-        # Parsing XML dari memory
+        # Register namespace umum KML
+        ET.register_namespace("", "http://www.opengis.net/kml/2.2")
+        ET.register_namespace("gx", "http://www.google.com/kml/ext/2.2")
+
+        # Parsing XML
         tree = ET.ElementTree(ET.fromstring(file_content))
         root = tree.getroot()
 
-        ns = {"kml": "http://www.opengis.net/kml/2.2"}
+        ns = {
+            "kml": "http://www.opengis.net/kml/2.2",
+            "gx": "http://www.google.com/kml/ext/2.2",
+        }
 
         # Cari Document atau Folder
         doc = root.find(".//kml:Document", ns)
