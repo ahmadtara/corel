@@ -59,7 +59,7 @@ if uploaded_file is not None:
     total_length = distances[-1]
 
     # --- Cari titik tiap 400m ---
-    interval = 400
+    interval = 2980
     markers, target = [], interval
     while target <= total_length:
         for i in range(1, len(distances)):
