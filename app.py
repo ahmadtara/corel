@@ -1,61 +1,71 @@
 import streamlit as st
 import xml.etree.ElementTree as ET
+import math
+from io import BytesIO
 
-st.title("🖊️ Ganti Teks di Template SVG (Corel)")
+# ----------------------
+# Fungsi bantu
+# ----------------------
+def haversine(lon1, lat1, lon2, lat2):
+    R = 6371000
+    phi1, phi2 = math.radians(lat1), math.radians(lat2)
+    dphi = math.radians(lat2 - lat1)
+    dlambda = math.radians(lon2 - lon1)
+    a = math.sin(dphi/2)**2 + math.cos(phi1)*math.cos(phi2)*math.sin(dlambda/2)**2
+    return R * 2 * math.atan2(math.sqrt(a), math.sqrt(1-a))
 
-# Upload SVG template
-uploaded_file = st.file_uploader("Upload file SVG dari Corel", type=["svg"])
+def interpolate_point(lon1, lat1, lon2, lat2, ratio):
+    lon = lon1 + (lon2 - lon1) * ratio
+    lat = lat1 + (lat2 - lat1) * ratio
+    return lon, lat
 
-if uploaded_file:
+# ----------------------
+# App Streamlit
+# ----------------------
+st.title("📍 Tambahkan Placemark Tiap 400m di Jalur Kabel")
+
+uploaded_file = st.file_uploader("Upload file KML", type=["kml"])
+
+if uploaded_file is not None:
     tree = ET.parse(uploaded_file)
     root = tree.getroot()
+    ns = {"kml": "http://www.opengis.net/kml/2.2"}
 
-    # Input teks pengganti
-    old_text = st.text_input("Teks lama (misalnya: OAKN1.036)")
-    new_text = st.text_input("Teks baru (misalnya: BKSN2.045)")
+    coords_text = root.find(".//kml:LineString/kml:coordinates", ns).text.strip()
+    coords = [(float(c.split(",")[0]), float(c.split(",")[1])) for c in coords_text.split()]
 
-    fat_a = st.number_input("Jumlah FAT A", min_value=0, max_value=100, value=8)
-    fat_b = st.number_input("Jumlah FAT B", min_value=0, max_value=100, value=8)
-    fat_c = st.number_input("Jumlah FAT C", min_value=0, max_value=100, value=8)
-    fat_d = st.number_input("Jumlah FAT D", min_value=0, max_value=100, value=8)
+    # Hitung jarak kumulatif
+    distances = [0]
+    for i in range(1, len(coords)):
+        distances.append(distances[-1] + haversine(*coords[i-1], *coords[i]))
+    total_length = distances[-1]
 
-    if st.button("🔄 Proses Replace"):
-        count_replace = 0
-        for elem in root.iter():
-            if elem.text and old_text in elem.text:
-                elem.text = elem.text.replace(old_text, new_text)
-                count_replace += 1
+    # Cari titik tiap 400m
+    interval = 400
+    markers, target = [], interval
+    while target <= total_length:
+        for i in range(1, len(distances)):
+            if distances[i] >= target:
+                d_seg = distances[i] - distances[i-1]
+                ratio = (target - distances[i-1]) / d_seg
+                lon, lat = interpolate_point(*coords[i-1], *coords[i], ratio)
+                markers.append((target, lon, lat))
+                break
+        target += interval
 
-        # Update FAT otomatis
-        fat_sections = {
-            "FAT A": fat_a,
-            "FAT B": fat_b,
-            "FAT C": fat_c,
-            "FAT D": fat_d,
-        }
+    # Tambahkan Placemark baru
+    doc = root.find(".//kml:Document", ns)
+    for dist, lon, lat in markers:
+        pm = ET.Element("Placemark")
+        ET.SubElement(pm, "name").text = f"MR.PYH.S02.M{int(dist)}"
+        pt = ET.SubElement(pm, "Point")
+        ET.SubElement(pt, "coordinates").text = f"{lon},{lat},0"
+        doc.append(pm)
 
-        for elem in root.iter():
-            if elem.text:
-                for prefix, limit in fat_sections.items():
-                    if elem.text.startswith(prefix):
-                        # Ambil nomor FAT sekarang
-                        try:
-                            num = int(elem.text.split(" ")[-1][1:])  # contoh FAT A01 → 1
-                        except:
-                            continue
-                        if num > limit:
-                            elem.text = ""  # hapus kalau lebih dari limit
+    # Simpan ke memori
+    output = BytesIO()
+    tree.write(output, encoding="utf-8", xml_declaration=True)
+    output.seek(0)
 
-        # Simpan hasil
-        output_file = "output.svg"
-        tree.write(output_file, encoding="utf-8", xml_declaration=True)
-
-        with open(output_file, "rb") as f:
-            st.download_button(
-                "⬇️ Download hasil SVG",
-                f,
-                file_name="output.svg",
-                mime="image/svg+xml"
-            )
-
-        st.success(f"Teks '{old_text}' berhasil diganti jadi '{new_text}'. {count_replace} kali diganti.")
+    st.success(f"✅ Berhasil! Panjang kabel ≈ {total_length:.2f} m, Marker: {len(markers)}")
+    st.download_button("⬇️ Download KML Hasil", output, "POLE_WITH_MARKER.kml", "application/vnd.google-earth.kml+xml")
