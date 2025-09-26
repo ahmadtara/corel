@@ -53,11 +53,11 @@ if uploaded_file is not None:
                 break
         target += interval
 
-    # Tambahkan Placemark baru
+    # Tambahkan Placemark baru dengan nama SLACK-01 dst
     doc = root.find(".//kml:Document", ns)
-    for dist, lon, lat in markers:
+    for idx, (dist, lon, lat) in enumerate(markers, start=1):
         pm = ET.Element("Placemark")
-        ET.SubElement(pm, "name").text = f"MR.PYH.S02.M{int(dist)}"
+        ET.SubElement(pm, "name").text = f"SLACK-{idx:02d}"
         pt = ET.SubElement(pm, "Point")
         ET.SubElement(pt, "coordinates").text = f"{lon},{lat},0"
         doc.append(pm)
@@ -68,4 +68,4 @@ if uploaded_file is not None:
     output.seek(0)
 
     st.success(f"✅ Berhasil! Panjang kabel ≈ {total_length:.2f} m, Marker: {len(markers)}")
-    st.download_button("⬇️ Download KML Hasil", output, "POLE_WITH_MARKER.kml", "application/vnd.google-earth.kml+xml")
+    st.download_button("⬇️ Download KML Hasil", output, "POLE_SLACK.kml", "application/vnd.google-earth.kml+xml")
