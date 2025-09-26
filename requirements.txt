@@ -1,4 +1,3 @@
 streamlit
-reportlab
-svglib
-lxml
+openpyxl   # kalau mau export XLSX
+pandas     # kalau mau olah tabel marker
