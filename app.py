@@ -1,39 +1,33 @@
 import streamlit as st
 import xml.etree.ElementTree as ET
 from io import BytesIO
+import re
 
-# ----------------------
-# Streamlit App
-# ----------------------
 st.title("🔄 Balik Urutan Placemark KML")
 
 uploaded_file = st.file_uploader("Upload file KML", type=["kml"])
 
 if uploaded_file is not None:
     try:
-        # Baca isi file ke memory
-        file_content = uploaded_file.read()
+        # Baca isi file asli (decode ke string)
+        file_content = uploaded_file.read().decode("utf-8")
 
-        # Register namespace umum KML
-        ET.register_namespace("", "http://www.opengis.net/kml/2.2")
-        ET.register_namespace("gx", "http://www.google.com/kml/ext/2.2")
+        # Hapus semua deklarasi xmlns
+        file_content = re.sub(r"\sxmlns(:\w+)?=\"[^\"]+\"", "", file_content)
+        # Hapus prefix di tag, contoh <gx:Track> jadi <Track>
+        file_content = re.sub(r"<(/?)(\w+):", r"<\1", file_content)
 
-        # Parsing XML
+        # Parsing XML yang sudah dibersihkan
         tree = ET.ElementTree(ET.fromstring(file_content))
         root = tree.getroot()
 
-        ns = {
-            "kml": "http://www.opengis.net/kml/2.2",
-            "gx": "http://www.google.com/kml/ext/2.2",
-        }
-
         # Cari Document atau Folder
-        doc = root.find(".//kml:Document", ns)
+        doc = root.find(".//Document")
         if doc is None:
-            doc = root.find(".//kml:Folder", ns)
+            doc = root.find(".//Folder")
 
         if doc is not None:
-            placemarks = doc.findall("kml:Placemark", ns)
+            placemarks = doc.findall("Placemark")
 
             # Hapus semua dulu
             for pm in placemarks:
@@ -43,7 +37,7 @@ if uploaded_file is not None:
             for pm in reversed(placemarks):
                 doc.append(pm)
 
-            # Simpan hasil ke memory buffer
+            # Simpan hasil ke buffer
             output_buffer = BytesIO()
             tree.write(output_buffer, encoding="UTF-8", xml_declaration=True)
             output_buffer.seek(0)
