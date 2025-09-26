@@ -10,39 +10,46 @@ st.title("🔄 Balik Urutan Placemark KML")
 uploaded_file = st.file_uploader("Upload file KML", type=["kml"])
 
 if uploaded_file is not None:
-    # Parsing file
-    ns = {"kml": "http://www.opengis.net/kml/2.2"}
-    tree = ET.parse(uploaded_file)
-    root = tree.getroot()
+    try:
+        # Baca isi file ke memory
+        file_content = uploaded_file.read()
 
-    # Cari Document atau Folder
-    doc = root.find(".//kml:Document", ns)
-    if doc is None:
-        doc = root.find(".//kml:Folder", ns)
+        # Parsing XML dari memory
+        tree = ET.ElementTree(ET.fromstring(file_content))
+        root = tree.getroot()
 
-    if doc is not None:
-        placemarks = doc.findall("kml:Placemark", ns)
+        ns = {"kml": "http://www.opengis.net/kml/2.2"}
 
-        # Hapus semua dulu
-        for pm in placemarks:
-            doc.remove(pm)
+        # Cari Document atau Folder
+        doc = root.find(".//kml:Document", ns)
+        if doc is None:
+            doc = root.find(".//kml:Folder", ns)
 
-        # Tambahkan kembali dengan urutan terbalik
-        for pm in reversed(placemarks):
-            doc.append(pm)
+        if doc is not None:
+            placemarks = doc.findall("kml:Placemark", ns)
 
-        # Simpan hasil ke memory buffer
-        output_buffer = BytesIO()
-        tree.write(output_buffer, encoding="UTF-8", xml_declaration=True)
-        output_buffer.seek(0)
+            # Hapus semua dulu
+            for pm in placemarks:
+                doc.remove(pm)
 
-        # Download button
-        st.success("✅ Urutan berhasil dibalik!")
-        st.download_button(
-            label="💾 Download KML Hasil",
-            data=output_buffer,
-            file_name="KML_REVERSED.kml",
-            mime="application/vnd.google-earth.kml+xml"
-        )
-    else:
-        st.error("❌ Tidak ditemukan Document atau Folder di dalam file KML.")
+            # Tambahkan kembali dengan urutan terbalik
+            for pm in reversed(placemarks):
+                doc.append(pm)
+
+            # Simpan hasil ke memory buffer
+            output_buffer = BytesIO()
+            tree.write(output_buffer, encoding="UTF-8", xml_declaration=True)
+            output_buffer.seek(0)
+
+            st.success("✅ Urutan berhasil dibalik!")
+            st.download_button(
+                label="💾 Download KML Hasil",
+                data=output_buffer,
+                file_name="KML_REVERSED.kml",
+                mime="application/vnd.google-earth.kml+xml"
+            )
+        else:
+            st.error("❌ Tidak ditemukan Document atau Folder di dalam file KML.")
+
+    except Exception as e:
+        st.error(f"⚠️ Gagal parsing KML: {e}")
