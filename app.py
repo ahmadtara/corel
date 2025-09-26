@@ -27,28 +27,32 @@ if uploaded_file is not None:
             doc = root.find(".//Folder")
 
         if doc is not None:
-            placemarks = doc.findall("Placemark")
+            # Ambil semua Placemark ke dalam list (urut asli)
+            placemarks = list(doc.findall("Placemark"))
 
-            # Hapus semua dulu
-            for pm in placemarks:
-                doc.remove(pm)
+            if len(placemarks) > 0:
+                # Hapus semua Placemark dari doc
+                for pm in placemarks:
+                    doc.remove(pm)
 
-            # Tambahkan kembali dengan urutan terbalik
-            for pm in reversed(placemarks):
-                doc.append(pm)
+                # Append ulang dengan urutan terbalik
+                for pm in placemarks[::-1]:
+                    doc.append(pm)
 
-            # Simpan hasil ke buffer
-            output_buffer = BytesIO()
-            tree.write(output_buffer, encoding="UTF-8", xml_declaration=True)
-            output_buffer.seek(0)
+                # Simpan hasil ke buffer
+                output_buffer = BytesIO()
+                tree.write(output_buffer, encoding="UTF-8", xml_declaration=True)
+                output_buffer.seek(0)
 
-            st.success("✅ Urutan berhasil dibalik!")
-            st.download_button(
-                label="💾 Download KML Hasil",
-                data=output_buffer,
-                file_name="KML_REVERSED.kml",
-                mime="application/vnd.google-earth.kml+xml"
-            )
+                st.success("✅ Urutan berhasil dibalik!")
+                st.download_button(
+                    label="💾 Download KML Hasil",
+                    data=output_buffer,
+                    file_name="KML_REVERSED.kml",
+                    mime="application/vnd.google-earth.kml+xml"
+                )
+            else:
+                st.warning("⚠️ Tidak ada Placemark ditemukan di dalam file KML.")
         else:
             st.error("❌ Tidak ditemukan Document atau Folder di dalam file KML.")
 
