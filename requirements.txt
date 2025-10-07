@@ -2,3 +2,6 @@ streamlit
 openpyxl   # kalau mau export XLSX
 pandas     # kalau mau olah tabel marker
 lxml
+simplekml
+requests
+shapely
