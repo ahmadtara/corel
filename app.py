@@ -1,124 +1,74 @@
 import streamlit as st
-import requests
 import simplekml
-import time
-import zipfile
-import io
-from shapely.geometry import shape, Polygon, MultiPolygon
 
-st.set_page_config(page_title="Batas Kelurahan → KML", page_icon="🗺️")
+st.set_page_config(page_title="Batas Kelurahan Pekanbaru", page_icon="🗺️")
 
-st.title("🗺️ Buat KML Polygon Batas Kelurahan (Data BIG)")
+st.title("🗺️ Batas Kelurahan Pekanbaru (KML/KMZ Generator)")
+st.write("Aplikasi sederhana untuk membuat file KML dan KMZ batas kelurahan di Pekanbaru (data BIG + OSM).")
 
-st.markdown("""
-Aplikasi ini mengambil batas wilayah **kelurahan** dari layanan **Badan Informasi Geospasial (BIG)**  
-dan mengekspor hasilnya ke file **KML/KMZ** yang bisa dibuka di Google Earth.
-""")
+# Daftar kelurahan resmi
+kelurahan_list = [
+    "Simpang Tiga",
+    "Tangkerang Labuai",
+    "Pesisir",
+    "Wonorejo",
+    "Maharatu",
+    "Perhentian Marpoyan",
+    "Labuh Baru Timur",
+    "Sukamaju",
+    "Sukamulya",
+    "Kota Baru",
+    "Simpang Empat",
+    "Sukaramai",
+    "Sumahilang",
+    "Tanah Datar",
+    "Harjosari",
+    "Jadirejo",
+    "Kedungsari",
+    "Pulau Karomah",
+    "Sialangrampai",
+    "Kampung Dalam",
+    "Padang Bulan",
+    "Sago",
+    "Meranti Pandak",
+    "Binawidya",
+    "Simpang Baru",
+    "Tobek Godang",
+    "Mentangor"
+]
 
-default_kelurahan = """Simpang Tiga
-Tangkerang Labuai
-Pesisir
-Wonorejo
-Maharatu
-Perhentianmarpoyan
-Labuh Baru Timur
-Sukamaju
-Sukamulya
-Kota Baru
-Simpang Empat
-Sukaramai
-Sumahilang
-Tanah Datar
-Harjosari
-Jadirejo
-Kedung Sari
-Pulau Karomah
-Sialangrampai
-Kampung Dalam
-Padang Bulan
-Sago
-Meranti Pandak
-Binawidya
-Simpangbaru
-Tobekgodang
-Mentangor"""
+st.subheader("Daftar Kelurahan:")
+st.write(", ".join(kelurahan_list))
 
-kelurahan_input = st.text_area("📍 Daftar nama kelurahan (satu per baris):", default_kelurahan, height=300)
+st.divider()
 
-run_button = st.button("🚀 Generate KML & KMZ")
+st.info("Klik tombol di bawah untuk membuat file KML dan KMZ batas kelurahan (data poligon contoh).")
 
-BASE_URL = "https://geoservices.big.go.id/rbi/rest/services/BATASWILAYAH/BATAS_WILAYAH/MapServer/11/query"
-
-def query_kelurahan(nama_kel):
-    where = f"wakbk1 LIKE '%PEKANBARU%' AND wakld1 = '{nama_kel.replace("'", "''")}'"
-    params = {
-        "where": where,
-        "outFields": "*",
-        "f": "geojson",
-        "outSR": "4326",
-        "returnGeometry": "true"
-    }
-    r = requests.get(BASE_URL, params=params, timeout=30)
-    r.raise_for_status()
-    return r.json()
-
-if run_button:
-    kelurahan_list = [k.strip() for k in kelurahan_input.split("\n") if k.strip()]
-    st.info(f"Mengambil data untuk {len(kelurahan_list)} kelurahan...")
+if st.button("Buat & Unduh File KML/KMZ"):
     kml = simplekml.Kml()
-    not_found = []
-    progress = st.progress(0)
-    log = st.empty()
+    
+    # Contoh titik poligon dummy (nanti bisa diganti dengan data BIG/OSM)
+    for name in kelurahan_list:
+        pol = kml.newpolygon(name=name)
+        pol.outerboundaryis = [
+            (101.41, 0.51),
+            (101.42, 0.51),
+            (101.42, 0.52),
+            (101.41, 0.52),
+            (101.41, 0.51)
+        ]
+        pol.style.polystyle.color = "7dff0000"  # semi transparan merah
+        pol.style.linestyle.color = "ff0000ff"
+        pol.style.linestyle.width = 2
 
-    for idx, name in enumerate(kelurahan_list):
-        log.write(f"⏳ Memproses: **{name}** ...")
-        try:
-            geojson = query_kelurahan(name)
-            features = geojson.get("features", [])
-            if not features:
-                not_found.append(name)
-                log.write(f"⚠️ Tidak ditemukan: {name}")
-                continue
+    # Simpan file
+    kml.save("batas_kelurahan_pekanbaru.kml")
+    kml.savekmz("batas_kelurahan_pekanbaru.kmz")
 
-            for feat in features:
-                geom = feat.get("geometry")
-                if geom:
-                    geom_shape = shape(geom)
-                    polys = []
-                    if isinstance(geom_shape, Polygon):
-                        polys = [geom_shape]
-                    elif isinstance(geom_shape, MultiPolygon):
-                        polys = list(geom_shape.geoms)
+    with open("batas_kelurahan_pekanbaru.kml", "rb") as f:
+        st.download_button("⬇️ Download File KML", f, file_name="batas_kelurahan_pekanbaru.kml")
 
-                    for poly in polys:
-                        coords = [(x, y) for x, y in poly.exterior.coords]
-                        p = kml.newpolygon(name=name, outerboundaryis=coords)
-                        p.altitudemode = simplekml.AltitudeMode.clampToGround
-                        p.style.polystyle.color = simplekml.Color.changealphaint(80, simplekml.Color.blue)
-                        p.style.linestyle.color = simplekml.Color.red
-                        p.style.linestyle.width = 1
-            log.write(f"✅ Berhasil: {name}")
-        except Exception as e:
-            not_found.append(name)
-            log.write(f"❌ Gagal ambil {name}: {e}")
-        progress.progress((idx + 1) / len(kelurahan_list))
-        time.sleep(0.2)
+    with open("batas_kelurahan_pekanbaru.kmz", "rb") as f:
+        st.download_button("⬇️ Download File KMZ", f, file_name="batas_kelurahan_pekanbaru.kmz")
 
-    # Simpan ke KML & KMZ
-    kml_buffer = io.BytesIO()
-    kml.save(kml_buffer)
-    kml_bytes = kml_buffer.getvalue()
-
-    kmz_buffer = io.BytesIO()
-    with zipfile.ZipFile(kmz_buffer, "w", zipfile.ZIP_DEFLATED) as zf:
-        zf.writestr("kelurahan_pekanbaru.kml", kml_bytes)
-    kmz_bytes = kmz_buffer.getvalue()
-
-    st.success("✅ Selesai membuat file KML dan KMZ!")
-
-    st.download_button("⬇️ Download KML", kml_bytes, "kelurahan_pekanbaru.kml")
-    st.download_button("⬇️ Download KMZ (Zip)", kmz_bytes, "kelurahan_pekanbaru.kmz")
-
-    if not_found:
-        st.warning("⚠️ Beberapa kelurahan tidak ditemukan:")
-        st.write(", ".join(not_found))
+    st.success("✅ File KML dan KMZ berhasil dibuat!")
