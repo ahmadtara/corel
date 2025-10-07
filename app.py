@@ -1,60 +1,71 @@
 import streamlit as st
-import xml.etree.ElementTree as ET
+import requests
+import json
+import os
+import zipfile
 from io import BytesIO
-import re
 
-st.title("🔄 Balik Urutan Placemark KML")
+st.set_page_config(page_title="ArcGIS ➜ GeoJSON Extractor", page_icon="🗺️", layout="centered")
 
-uploaded_file = st.file_uploader("Upload file KML", type=["kml"])
+st.title("🗺️ ArcGIS ➜ GeoJSON Extractor")
+st.markdown("""
+Masukkan **ArcGIS Web App ID** (contoh: `51aa6e2a1b7d4cf1a551e1258c7f05c1`)  
+Aplikasi ini akan:
+1. Mendapatkan konfigurasi webmap dari AppID  
+2. Mengambil semua layer (`FeatureServer/MapServer`)  
+3. Mengunduhnya otomatis sebagai **GeoJSON**
+""")
 
-if uploaded_file is not None:
+appid = st.text_input("Masukkan AppID", "51aa6e2a1b7d4cf1a551e1258c7f05c1")
+
+if st.button("🚀 Ekstrak GeoJSON"):
     try:
-        # Baca isi file asli (decode ke string)
-        file_content = uploaded_file.read().decode("utf-8")
+        st.info("Mengambil metadata aplikasi...")
 
-        # Hapus semua deklarasi xmlns
-        file_content = re.sub(r"\sxmlns(:\w+)?=\"[^\"]+\"", "", file_content)
-        # Hapus prefix di tag, contoh <gx:Track> jadi <Track>
-        file_content = re.sub(r"<(/?)(\w+):", r"<\1", file_content)
+        # 1️⃣ Ambil metadata aplikasi
+        app_url = f"https://www.arcgis.com/sharing/rest/content/items/{appid}/data?f=json"
+        app_data = requests.get(app_url).json()
 
-        # Parsing XML yang sudah dibersihkan
-        tree = ET.ElementTree(ET.fromstring(file_content))
-        root = tree.getroot()
+        webmap_id = app_data.get("values", {}).get("webmap")
+        if not webmap_id:
+            st.error("❌ Gagal mendapatkan WebMap ID dari AppID.")
+            st.stop()
 
-        # Cari Document atau Folder
-        doc = root.find(".//Document")
-        if doc is None:
-            doc = root.find(".//Folder")
+        st.success(f"WebMap ID: {webmap_id}")
 
-        if doc is not None:
-            # Ambil semua Placemark ke dalam list (urut asli)
-            placemarks = list(doc.findall("Placemark"))
+        # 2️⃣ Ambil definisi webmap
+        webmap_url = f"https://www.arcgis.com/sharing/rest/content/items/{webmap_id}/data?f=json"
+        webmap_data = requests.get(webmap_url).json()
 
-            if len(placemarks) > 0:
-                # Hapus semua Placemark dari doc
-                for pm in placemarks:
-                    doc.remove(pm)
+        # 3️⃣ Ekstrak semua layer
+        layers = [lyr["url"] for lyr in webmap_data.get("operationalLayers", []) if "url" in lyr]
 
-                # Append ulang dengan urutan terbalik
-                for pm in placemarks[::-1]:
-                    doc.append(pm)
+        if not layers:
+            st.warning("Tidak ditemukan layer dalam WebMap ini.")
+            st.stop()
 
-                # Simpan hasil ke buffer
-                output_buffer = BytesIO()
-                tree.write(output_buffer, encoding="UTF-8", xml_declaration=True)
-                output_buffer.seek(0)
+        st.write("### 🌍 Ditemukan Layer:")
+        for i, l in enumerate(layers, 1):
+            st.write(f"{i}. {l}")
 
-                st.success("✅ Urutan berhasil dibalik!")
-                st.download_button(
-                    label="💾 Download KML Hasil",
-                    data=output_buffer,
-                    file_name="KML_REVERSED.kml",
-                    mime="application/vnd.google-earth.kml+xml"
-                )
-            else:
-                st.warning("⚠️ Tidak ada Placemark ditemukan di dalam file KML.")
-        else:
-            st.error("❌ Tidak ditemukan Document atau Folder di dalam file KML.")
+        # 4️⃣ Unduh dan simpan tiap layer
+        zip_buffer = BytesIO()
+        with zipfile.ZipFile(zip_buffer, "w", zipfile.ZIP_DEFLATED) as zipf:
+            for i, layer_url in enumerate(layers, 1):
+                query_url = f"{layer_url}/query?where=1%3D1&outFields=*&f=geojson"
+                st.write(f"⬇️ Mengunduh Layer {i}...")
+                geojson_data = requests.get(query_url).text
+                zipf.writestr(f"layer_{i}.geojson", geojson_data)
+
+        zip_buffer.seek(0)
+        st.success("✅ Semua layer berhasil diunduh!")
+
+        st.download_button(
+            label="📦 Unduh Semua Layer (ZIP)",
+            data=zip_buffer,
+            file_name=f"arcgis_{appid}_layers.zip",
+            mime="application/zip"
+        )
 
     except Exception as e:
-        st.error(f"⚠️ Gagal parsing KML: {e}")
+        st.error(f"Terjadi kesalahan: {e}")
