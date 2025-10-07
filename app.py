@@ -1,74 +1,61 @@
 import streamlit as st
-import simplekml
+import osmnx as ox
+import geopandas as gpd
+from shapely.geometry import Polygon
+from fastkml import kml
+import tempfile
+import zipfile
+import os
 
-st.set_page_config(page_title="Batas Kelurahan Pekanbaru", page_icon="🗺️")
+st.set_page_config(page_title="Batas Kelurahan Pekanbaru (OSM)", layout="wide")
 
-st.title("🗺️ Batas Kelurahan Pekanbaru (KML/KMZ Generator)")
-st.write("Aplikasi sederhana untuk membuat file KML dan KMZ batas kelurahan di Pekanbaru (data BIG + OSM).")
-
-# Daftar kelurahan resmi
+# ====== Daftar Kelurahan ======
 kelurahan_list = [
-    "Simpang Tiga",
-    "Tangkerang Labuai",
-    "Pesisir",
-    "Wonorejo",
-    "Maharatu",
-    "Perhentian Marpoyan",
-    "Labuh Baru Timur",
-    "Sukamaju",
-    "Sukamulya",
-    "Kota Baru",
-    "Simpang Empat",
-    "Sukaramai",
-    "Sumahilang",
-    "Tanah Datar",
-    "Harjosari",
-    "Jadirejo",
-    "Kedungsari",
-    "Pulau Karomah",
-    "Sialangrampai",
-    "Kampung Dalam",
-    "Padang Bulan",
-    "Sago",
-    "Meranti Pandak",
-    "Binawidya",
-    "Simpang Baru",
-    "Tobek Godang",
-    "Mentangor"
+    "Simpang Tiga", "Tangkerang Labuai", "Pesisir", "Wonorejo", "Maharatu",
+    "Perhentian Marpoyan", "Labuh Baru Timur", "Sukamaju", "Sukamulya",
+    "Kota Baru", "Simpang Empat", "Sukaramai", "Sumahilang", "Tanah Datar",
+    "Harjosari", "Jadirejo", "Kedung Sari", "Pulau Karomah", "Sialang Rampai",
+    "Kampung Dalam", "Padang Bulan", "Sago", "Meranti Pandak", "Binawidya",
+    "Simpang Baru", "Tobek Godang", "Mentangor"
 ]
 
-st.subheader("Daftar Kelurahan:")
-st.write(", ".join(kelurahan_list))
+st.title("🗺️ Batas Kelurahan Pekanbaru (Data OSM)")
+st.write("Aplikasi ini mengambil batas administratif kelurahan langsung dari OpenStreetMap.")
 
-st.divider()
+# ====== Proses Download Data ======
+def get_kelurahan_boundary(kel_name):
+    try:
+        gdf = ox.geocode_to_gdf(f"{kel_name}, Pekanbaru, Riau, Indonesia")
+        return gdf
+    except Exception as e:
+        st.warning(f"Gagal ambil data: {kel_name} ({e})")
+        return None
 
-st.info("Klik tombol di bawah untuk membuat file KML dan KMZ batas kelurahan (data poligon contoh).")
+if st.button("🔍 Ambil Batas Kelurahan dari OSM"):
+    all_gdf = []
+    for kel in kelurahan_list:
+        gdf = get_kelurahan_boundary(kel)
+        if gdf is not None:
+            gdf["nama"] = kel
+            all_gdf.append(gdf)
 
-if st.button("Buat & Unduh File KML/KMZ"):
-    kml = simplekml.Kml()
-    
-    # Contoh titik poligon dummy (nanti bisa diganti dengan data BIG/OSM)
-    for name in kelurahan_list:
-        pol = kml.newpolygon(name=name)
-        pol.outerboundaryis = [
-            (101.41, 0.51),
-            (101.42, 0.51),
-            (101.42, 0.52),
-            (101.41, 0.52),
-            (101.41, 0.51)
-        ]
-        pol.style.polystyle.color = "7dff0000"  # semi transparan merah
-        pol.style.linestyle.color = "ff0000ff"
-        pol.style.linestyle.width = 2
+    if len(all_gdf) > 0:
+        merged = gpd.GeoDataFrame(pd.concat(all_gdf, ignore_index=True), crs=all_gdf[0].crs)
 
-    # Simpan file
-    kml.save("batas_kelurahan_pekanbaru.kml")
-    kml.savekmz("batas_kelurahan_pekanbaru.kmz")
+        # Simpan KML
+        temp_dir = tempfile.mkdtemp()
+        kml_path = os.path.join(temp_dir, "kelurahan_pekanbaru.kml")
+        merged.to_file(kml_path, driver="KML")
 
-    with open("batas_kelurahan_pekanbaru.kml", "rb") as f:
-        st.download_button("⬇️ Download File KML", f, file_name="batas_kelurahan_pekanbaru.kml")
+        # Zip ke KMZ
+        kmz_path = os.path.join(temp_dir, "kelurahan_pekanbaru.kmz")
+        with zipfile.ZipFile(kmz_path, "w", zipfile.ZIP_DEFLATED) as zipf:
+            zipf.write(kml_path, arcname="kelurahan_pekanbaru.kml")
 
-    with open("batas_kelurahan_pekanbaru.kmz", "rb") as f:
-        st.download_button("⬇️ Download File KMZ", f, file_name="batas_kelurahan_pekanbaru.kmz")
-
-    st.success("✅ File KML dan KMZ berhasil dibuat!")
+        st.success("✅ Berhasil! File siap diunduh.")
+        with open(kml_path, "rb") as f:
+            st.download_button("⬇️ Download KML", f, file_name="kelurahan_pekanbaru.kml")
+        with open(kmz_path, "rb") as f:
+            st.download_button("⬇️ Download KMZ", f, file_name="kelurahan_pekanbaru.kmz")
+    else:
+        st.error("❌ Tidak ada data ditemukan dari OSM.")
