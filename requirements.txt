@@ -8,3 +8,6 @@ shapely
 osmnx
 geopandas
 fastkml
+owslib
+folium
+streamlit-folium
