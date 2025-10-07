@@ -1,105 +1,124 @@
 import streamlit as st
 import requests
-import json
-import os
+import simplekml
+import time
 import zipfile
-from io import BytesIO
+import io
+from shapely.geometry import shape, Polygon, MultiPolygon
 
-st.set_page_config(page_title="ArcGIS ➜ GeoJSON Extractor", page_icon="🗺️", layout="centered")
+st.set_page_config(page_title="Batas Kelurahan → KML", page_icon="🗺️")
 
-st.title("🗺️ ArcGIS ➜ GeoJSON Extractor (Auto Deep Scan)")
+st.title("🗺️ Buat KML Polygon Batas Kelurahan (Data BIG)")
+
 st.markdown("""
-Masukkan **ArcGIS Web App ID** (contoh: `51aa6e2a1b7d4cf1a551e1258c7f05c1`)  
-Aplikasi ini akan:
-1. Mendapatkan konfigurasi WebMap dari AppID  
-2. Mendeteksi semua layer (`FeatureServer`, `MapServer`, bahkan yang tersembunyi)  
-3. Mengunduh otomatis semua layer sebagai **GeoJSON**
+Aplikasi ini mengambil batas wilayah **kelurahan** dari layanan **Badan Informasi Geospasial (BIG)**  
+dan mengekspor hasilnya ke file **KML/KMZ** yang bisa dibuka di Google Earth.
 """)
 
-appid = st.text_input("Masukkan AppID", "51aa6e2a1b7d4cf1a551e1258c7f05c1")
+default_kelurahan = """Simpang Tiga
+Tangkerang Labuai
+Pesisir
+Wonorejo
+Maharatu
+Perhentianmarpoyan
+Labuh Baru Timur
+Sukamaju
+Sukamulya
+Kota Baru
+Simpang Empat
+Sukaramai
+Sumahilang
+Tanah Datar
+Harjosari
+Jadirejo
+Kedung Sari
+Pulau Karomah
+Sialangrampai
+Kampung Dalam
+Padang Bulan
+Sago
+Meranti Pandak
+Binawidya
+Simpangbaru
+Tobekgodang
+Mentangor"""
 
-def extract_urls(obj, found=None):
-    """ Rekursif cari URL dari struktur dict/list JSON """
-    if found is None:
-        found = []
-    if isinstance(obj, dict):
-        for k, v in obj.items():
-            if k == "url" and isinstance(v, str) and ("FeatureServer" in v or "MapServer" in v):
-                found.append(v)
-            else:
-                extract_urls(v, found)
-    elif isinstance(obj, list):
-        for i in obj:
-            extract_urls(i, found)
-    return found
+kelurahan_input = st.text_area("📍 Daftar nama kelurahan (satu per baris):", default_kelurahan, height=300)
 
+run_button = st.button("🚀 Generate KML & KMZ")
 
-if st.button("🚀 Ekstrak GeoJSON"):
-    try:
-        st.info("🔍 Mengambil metadata aplikasi...")
+BASE_URL = "https://geoservices.big.go.id/rbi/rest/services/BATASWILAYAH/BATAS_WILAYAH/MapServer/11/query"
 
-        # 1️⃣ Ambil metadata aplikasi
-        app_url = f"https://www.arcgis.com/sharing/rest/content/items/{appid}/data?f=json"
-        app_data = requests.get(app_url).json()
+def query_kelurahan(nama_kel):
+    where = f"wakbk1 LIKE '%PEKANBARU%' AND wakld1 = '{nama_kel.replace("'", "''")}'"
+    params = {
+        "where": where,
+        "outFields": "*",
+        "f": "geojson",
+        "outSR": "4326",
+        "returnGeometry": "true"
+    }
+    r = requests.get(BASE_URL, params=params, timeout=30)
+    r.raise_for_status()
+    return r.json()
 
-        webmap_id = None
-        # Bisa jadi app menggunakan struktur berbeda
-        if "values" in app_data and "webmap" in app_data["values"]:
-            webmap_id = app_data["values"]["webmap"]
-        elif "map" in app_data:
-            webmap_id = app_data["map"].get("itemId")
+if run_button:
+    kelurahan_list = [k.strip() for k in kelurahan_input.split("\n") if k.strip()]
+    st.info(f"Mengambil data untuk {len(kelurahan_list)} kelurahan...")
+    kml = simplekml.Kml()
+    not_found = []
+    progress = st.progress(0)
+    log = st.empty()
 
-        if not webmap_id:
-            st.error("❌ Tidak bisa menemukan WebMap ID dari AppID ini.")
-            st.json(app_data)
-            st.stop()
+    for idx, name in enumerate(kelurahan_list):
+        log.write(f"⏳ Memproses: **{name}** ...")
+        try:
+            geojson = query_kelurahan(name)
+            features = geojson.get("features", [])
+            if not features:
+                not_found.append(name)
+                log.write(f"⚠️ Tidak ditemukan: {name}")
+                continue
 
-        st.success(f"WebMap ID: {webmap_id}")
+            for feat in features:
+                geom = feat.get("geometry")
+                if geom:
+                    geom_shape = shape(geom)
+                    polys = []
+                    if isinstance(geom_shape, Polygon):
+                        polys = [geom_shape]
+                    elif isinstance(geom_shape, MultiPolygon):
+                        polys = list(geom_shape.geoms)
 
-        # 2️⃣ Ambil definisi webmap
-        webmap_url = f"https://www.arcgis.com/sharing/rest/content/items/{webmap_id}/data?f=json"
-        webmap_data = requests.get(webmap_url).json()
+                    for poly in polys:
+                        coords = [(x, y) for x, y in poly.exterior.coords]
+                        p = kml.newpolygon(name=name, outerboundaryis=coords)
+                        p.altitudemode = simplekml.AltitudeMode.clampToGround
+                        p.style.polystyle.color = simplekml.Color.changealphaint(80, simplekml.Color.blue)
+                        p.style.linestyle.color = simplekml.Color.red
+                        p.style.linestyle.width = 1
+            log.write(f"✅ Berhasil: {name}")
+        except Exception as e:
+            not_found.append(name)
+            log.write(f"❌ Gagal ambil {name}: {e}")
+        progress.progress((idx + 1) / len(kelurahan_list))
+        time.sleep(0.2)
 
-        # 3️⃣ Cari URL layer secara mendalam
-        st.info("🔎 Memindai seluruh struktur untuk menemukan layer...")
-        layers = extract_urls(webmap_data)
+    # Simpan ke KML & KMZ
+    kml_buffer = io.BytesIO()
+    kml.save(kml_buffer)
+    kml_bytes = kml_buffer.getvalue()
 
-        # 4️⃣ Jika kosong, coba fallback dari itemData (kadang pakai sub webmap)
-        if not layers and "itemData" in webmap_data:
-            layers = extract_urls(webmap_data["itemData"])
+    kmz_buffer = io.BytesIO()
+    with zipfile.ZipFile(kmz_buffer, "w", zipfile.ZIP_DEFLATED) as zf:
+        zf.writestr("kelurahan_pekanbaru.kml", kml_bytes)
+    kmz_bytes = kmz_buffer.getvalue()
 
-        if not layers:
-            st.warning("❗ Tidak ditemukan layer dalam WebMap ini.")
-            st.expander("Lihat isi WebMap mentah").json(webmap_data)
-            st.stop()
+    st.success("✅ Selesai membuat file KML dan KMZ!")
 
-        # Hapus duplikat
-        layers = sorted(set(layers))
-        st.success(f"✅ Ditemukan {len(layers)} layer:")
-        for i, l in enumerate(layers, 1):
-            st.write(f"{i}. {l}")
+    st.download_button("⬇️ Download KML", kml_bytes, "kelurahan_pekanbaru.kml")
+    st.download_button("⬇️ Download KMZ (Zip)", kmz_bytes, "kelurahan_pekanbaru.kmz")
 
-        # 5️⃣ Unduh tiap layer sebagai GeoJSON
-        zip_buffer = BytesIO()
-        with zipfile.ZipFile(zip_buffer, "w", zipfile.ZIP_DEFLATED) as zipf:
-            for i, layer_url in enumerate(layers, 1):
-                query_url = f"{layer_url}/query?where=1%3D1&outFields=*&f=geojson"
-                st.write(f"⬇️ Mengunduh layer {i}...")
-                try:
-                    geojson_data = requests.get(query_url, timeout=15).text
-                    zipf.writestr(f"layer_{i}.geojson", geojson_data)
-                except Exception as e:
-                    st.error(f"Gagal unduh layer {i}: {e}")
-
-        zip_buffer.seek(0)
-        st.success("🎉 Semua layer berhasil diekstrak!")
-
-        st.download_button(
-            label="📦 Unduh Semua Layer (ZIP)",
-            data=zip_buffer,
-            file_name=f"arcgis_{appid}_layers.zip",
-            mime="application/zip"
-        )
-
-    except Exception as e:
-        st.error(f"⚠️ Terjadi kesalahan: {e}")
+    if not_found:
+        st.warning("⚠️ Beberapa kelurahan tidak ditemukan:")
+        st.write(", ".join(not_found))
