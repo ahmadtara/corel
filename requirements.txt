@@ -11,3 +11,4 @@ fastkml
 owslib
 folium
 streamlit-folium
+reportlab>=4.2.0
