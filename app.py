@@ -1,104 +1,120 @@
 import streamlit as st
-import geopandas as gpd
-import requests
-import io
-import simplekml
-import tempfile
-import zipfile
-import os
-import pandas as pd
 
-st.set_page_config(page_title="🗺️ Batas Kelurahan Pekanbaru (BIG + Backup)", layout="wide")
-st.title("🗺️ Batas Kelurahan Pekanbaru — BIG + Backup Mirror")
+# Konfigurasi halaman
+st.set_page_config(page_title="Edobi Clone", layout="centered")
 
-st.write("""
-Aplikasi ini mengambil batas administratif **kelurahan di Kota Pekanbaru**
-dari layanan resmi **Badan Informasi Geospasial (BIG)**.
-Jika server BIG tidak dapat diakses, aplikasi otomatis memakai **backup mirror dari GitHub (Alf-Anas / Indonesia GeoJSON)**.
-""")
+# ==== STYLE CUSTOM ====
+st.markdown("""
+<style>
+body {
+    background-color: #fff;
+    font-family: 'Poppins', sans-serif;
+}
+.header {
+    text-align: center;
+    margin-bottom: 1rem;
+}
+.info-box {
+    border: 1px solid #eee;
+    border-radius: 12px;
+    padding: 10px;
+    text-align: center;
+    background-color: #fafafa;
+}
+.info-title {
+    color: #777;
+    font-size: 14px;
+}
+.info-value {
+    font-weight: 600;
+    font-size: 16px;
+}
+.upgrade-btn button {
+    background-color: #E53935 !important;
+    color: white !important;
+    border-radius: 8px !important;
+    width: 100%;
+    font-weight: bold;
+}
+.menu-item {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 10px 0;
+    border-bottom: 1px solid #eee;
+}
+.menu-item img {
+    width: 28px;
+    height: 28px;
+}
+.navbar {
+    position: fixed;
+    bottom: 0;
+    left: 0;
+    width: 100%;
+    background: #fff;
+    border-top: 1px solid #eee;
+    display: flex;
+    justify-content: space-around;
+    padding: 10px 0;
+}
+.nav-item {
+    text-align: center;
+    font-size: 12px;
+    color: #999;
+}
+.nav-item.active {
+    color: #E53935;
+    font-weight: 600;
+}
+</style>
+""", unsafe_allow_html=True)
 
-# URL utama WFS BIG
-BIG_WFS_URL = "https://geoservices.big.go.id/geoserver/wfs"
+# ==== HEADER ====
+st.markdown("<div class='header'><img src='https://edobi.id/static/media/logo.70f0b2fa.svg' width='100'></div>", unsafe_allow_html=True)
 
-# URL backup dari GitHub
-BACKUP_URL = "https://github.com/alf-anas/indonesia-geojson/raw/main/geojson/admin/kelurahan/pekanbaru_kelurahan.geojson"
+# ==== INFO PANEL ====
+col1, col2, col3 = st.columns(3)
+with col1:
+    st.markdown("<div class='info-box'><div class='info-title'>Tipe Akun</div><div class='info-value'>BASIC</div></div>", unsafe_allow_html=True)
+with col2:
+    st.markdown("<div class='info-box'><div class='info-title'>Masa Aktif</div><div class='info-value'>15/10/2021</div></div>", unsafe_allow_html=True)
+with col3:
+    st.markdown("<div class='info-box'><div class='info-title'>Jumlah Outlet</div><div class='info-value'>2</div></div>", unsafe_allow_html=True)
 
+st.markdown("<div class='upgrade-btn'>", unsafe_allow_html=True)
+st.button("UPGRADE AKUN")
+st.markdown("</div>", unsafe_allow_html=True)
 
-@st.cache_data
-def load_from_big():
-    """Coba ambil data dari WFS BIG."""
-    params = {
-        "service": "WFS",
-        "version": "1.1.0",
-        "request": "GetFeature",
-        "typename": "BATASWILAYAH:BATAS_DESA_AR_50K",  # layer kelurahan
-        "outputFormat": "application/json",
-    }
-    r = requests.get(BIG_WFS_URL, params=params, timeout=60)
-    r.raise_for_status()
-    gdf = gpd.read_file(io.BytesIO(r.content))
-    # Filter hanya Pekanbaru
-    gdf = gdf[gdf["WADMKK"].str.contains("PEKANBARU", case=False, na=False)]
-    return gdf.to_crs(epsg=4326)
+st.markdown("### ⚙️ Setting")
 
+# ==== MENU LIST ====
+menu_items = [
+    ("👤", "Profil", "Konfigurasi Profil Pemilik"),
+    ("🏠", "Outlet", "Konfigurasi Profil Outlet dan Jam Operasional"),
+    ("🧺", "Layanan", "Konfigurasi Layanan"),
+    ("👨‍💼", "Pegawai", "Kelola data dan role pegawai"),
+    ("🛍️", "Pelanggan", "Kelola data pelanggan"),
+    ("💰", "Keuangan", "Kelola Keuangan")
+]
 
-@st.cache_data
-def load_from_backup():
-    """Ambil data dari GitHub mirror jika BIG gagal."""
-    r = requests.get(BACKUP_URL, timeout=60)
-    r.raise_for_status()
-    gdf = gpd.read_file(io.BytesIO(r.content))
-    return gdf.to_crs(epsg=4326)
+for icon, title, desc in menu_items:
+    st.markdown(f"""
+    <div class='menu-item'>
+        <div style='font-size:22px'>{icon}</div>
+        <div>
+            <div style='font-weight:600'>{title}</div>
+            <div style='color:#666;font-size:13px'>{desc}</div>
+        </div>
+    </div>
+    """, unsafe_allow_html=True)
 
-
-st.subheader("📦 Memuat Data Batas Kelurahan...")
-
-try:
-    gdf = load_from_big()
-    st.success(f"Data berhasil dimuat dari sumber BIG ({len(gdf)} kelurahan).")
-    source = "BIG"
-except Exception as e:
-    st.warning(f"⚠️ Gagal memuat data dari BIG: {e}")
-    st.info("Mengambil data dari backup GitHub (mirror)...")
-    try:
-        gdf = load_from_backup()
-        st.success(f"Data berhasil dimuat dari backup GitHub ({len(gdf)} kelurahan).")
-        source = "GitHub Backup"
-    except Exception as e2:
-        st.error(f"Gagal memuat data dari backup juga: {e2}")
-        st.stop()
-
-# Tampilkan tabel dan peta sederhana
-st.write(f"### ✅ Sumber data aktif: {source}")
-st.dataframe(gdf[["WADMPR", "WADMKK", "NAMOBJ"]].rename(columns={
-    "WADMPR": "Provinsi",
-    "WADMKK": "Kota/Kabupaten",
-    "NAMOBJ": "Kelurahan"
-}))
-
-# Preview peta
-st.map(gdf, zoom=11)
-
-# Export ke KML
-if st.button("⬇️ Export ke KML"):
-    kml = simplekml.Kml()
-    for _, row in gdf.iterrows():
-        geom = row.geometry
-        if geom.geom_type == "Polygon":
-            coords = [(x, y) for x, y in geom.exterior.coords]
-            p = kml.newpolygon(name=row["NAMOBJ"], outerboundaryis=coords)
-            p.style.polystyle.color = "7dff0000"
-            p.style.linestyle.width = 2
-        elif geom.geom_type == "MultiPolygon":
-            for poly in geom.geoms:
-                coords = [(x, y) for x, y in poly.exterior.coords]
-                p = kml.newpolygon(name=row["NAMOBJ"], outerboundaryis=coords)
-                p.style.polystyle.color = "7dff0000"
-                p.style.linestyle.width = 2
-
-    temp_dir = tempfile.mkdtemp()
-    kml_path = os.path.join(temp_dir, "batas_kelurahan_pekanbaru.kml")
-    kml.save(kml_path)
-
-    with open(kml_path, "rb") as f:
-        st.download_button("📥 Download KML", f, file_name="batas_kelurahan_pekanbaru.kml")
+# ==== NAVBAR ====
+st.markdown("""
+<div class='navbar'>
+  <div class='nav-item'>🏠<br>Home</div>
+  <div class='nav-item'>🧾<br>Order</div>
+  <div class='nav-item'>📊<br>Report</div>
+  <div class='nav-item active'>⚙️<br>Setting</div>
+</div>
+""", unsafe_allow_html=True)
