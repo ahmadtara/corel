@@ -127,4 +127,3 @@ def show():
                     )
                     link = f"https://wa.me/{row['No HP'].replace('+','').replace(' ','')}/?text={requests.utils.quote(msg)}"
                     st.markdown(f"[📲 Buka WhatsApp]({link})")
-`
