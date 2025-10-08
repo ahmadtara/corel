@@ -3,6 +3,7 @@ import pandas as pd
 import os
 import json
 import requests
+import datetime
 
 DATA_FILE = "service_data.csv"
 CONFIG_FILE = "config.json"
@@ -34,13 +35,35 @@ def save_data(df):
 def show():
     cfg = load_config()
     st.title("📊 Laporan Servis")
-
     df = load_data()
+
     if df.empty:
         st.info("Belum ada data servis.")
         return
 
-    st.dataframe(df)
+    # Pastikan kolom tanggal terbaca datetime
+    try:
+        df["Tanggal Masuk"] = pd.to_datetime(df["Tanggal Masuk"], errors="coerce")
+    except:
+        pass
+
+    # ------------------- FILTER -------------------
+    st.sidebar.header("📅 Filter Data")
+    tanggal_unik = sorted(df["Tanggal Masuk"].dropna().dt.date.unique())
+
+    if len(tanggal_unik) > 0:
+        pilih_tanggal = st.sidebar.selectbox(
+            "Pilih tanggal servis:",
+            options=["Semua Tanggal"] + [str(t) for t in tanggal_unik],
+            index=0
+        )
+        if pilih_tanggal != "Semua Tanggal":
+            df = df[df["Tanggal Masuk"].dt.date == datetime.date.fromisoformat(pilih_tanggal)]
+    else:
+        st.sidebar.info("Belum ada tanggal untuk difilter.")
+
+    # ------------------- TAMPIL DATA -------------------
+    st.dataframe(df, use_container_width=True)
     st.divider()
     st.subheader("🧰 Update Status & Kirim WhatsApp")
 
@@ -88,19 +111,22 @@ Terima Kasih,
                     st.rerun()
 
             with col2:
-                if st.button(f"🗑️ Hapus #{i}", key=f"del_{i}"):
+                if st.button(f"🗑️ Hapus Data Ini #{i}", key=f"del_{i}"):
                     df = df.drop(index=i).reset_index(drop=True)
                     save_data(df)
                     st.success("Data berhasil dihapus.")
                     st.rerun()
 
+    # ------------------- HAPUS MASSAL -------------------
     st.divider()
-    st.markdown("### 🗑️ Hapus Beberapa Data Sekaligus")
+    st.subheader("🗑️ Hapus Beberapa Data Sekaligus")
+
     pilih = st.multiselect(
         "Pilih servis untuk dihapus:",
         df.index,
         format_func=lambda x: f"{df.loc[x, 'Nama Pelanggan']} - {df.loc[x, 'Barang']}"
     )
+
     if st.button("🚮 Hapus Terpilih"):
         if pilih:
             df = df.drop(pilih).reset_index(drop=True)
