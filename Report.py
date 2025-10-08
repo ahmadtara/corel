@@ -77,25 +77,35 @@ def show():
             st.write(f"🎒 Kelengkapan : {row['Kelengkapan']}")
             st.write(f"💰 Harga Sekarang : {row['Harga Jasa'] if pd.notna(row['Harga Jasa']) else '-'}")
 
-            harga_baru = st.text_input(
-                f"Masukkan Harga untuk {row['Nama Pelanggan']}",
+            # Input harga dengan format Rp otomatis
+            harga_input = st.text_input(
+                f"Masukkan Harga (otomatis format Rp)",
                 value=str(row["Harga Jasa"]) if pd.notna(row["Harga Jasa"]) else "",
-                key=f"harga_{i}"
+                key=f"harga_{i}",
+                placeholder="Rp 100.000"
             )
 
             col1, col2 = st.columns(2)
             with col1:
                 if st.button(f"✅ Tandai Selesai & Kirim WA #{i}", key=f"done_{i}"):
-                    if harga_baru.strip() == "":
+
+                    if harga_input.strip() == "":
                         st.warning("Masukkan harga jasa terlebih dahulu.")
                         st.stop()
+
+                    # Format harga Rp (hapus huruf dan format)
+                    harga_baru = harga_input.replace("Rp", "").replace(".", "").replace(",", "").strip()
+                    try:
+                        harga_baru = f"Rp {int(harga_baru):,}".replace(",", ".")
+                    except:
+                        harga_baru = harga_input
 
                     # Update data
                     df.at[i, "Status"] = "Lunas"
                     df.at[i, "Harga Jasa"] = harga_baru
                     save_data(df)
 
-                    # Format pesan WhatsApp versi singkat
+                    # Format pesan WhatsApp
                     msg = f"""Assalamualaikum {row['Nama Pelanggan']},
 
 Unit anda dengan nomor nota {row['No Nota']} sudah selesai dan siap untuk diambil.
@@ -106,8 +116,17 @@ Terima Kasih,
                     no_hp = str(row["No HP"]).replace("+", "").replace(" ", "").strip()
                     link = f"https://wa.me/{no_hp}?text={requests.utils.quote(msg)}"
 
-                    st.success(f"✅ Servis {row['Barang']} selesai dan tersimpan.")
-                    st.markdown(f"[📲 Kirim WhatsApp ke {no_hp}]({link})", unsafe_allow_html=True)
+                    # Notifikasi berhasil
+                    st.success(f"✅ Servis {row['Barang']} selesai dan tersimpan ({harga_baru}).")
+
+                    # Auto-buka WA via JavaScript
+                    js = f"""
+                    <script>
+                    window.open('{link}', '_blank');
+                    </script>
+                    """
+                    st.components.v1.html(js, height=0, width=0)
+
                     st.rerun()
 
             with col2:
