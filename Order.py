@@ -5,13 +5,14 @@ import os
 import requests
 import json
 
-# ---------------------- CONFIG ----------------------
+# ---------------------- KONFIGURASI ----------------------
 DATA_FILE = "service_data.csv"
 CONFIG_FILE = "config.json"
 COUNTER_FILE = "nota_counter.txt"
-FIREBASE_URL = "https://toko-4960c-default-rtdb.asia-southeast1.firebasedatabase.app/"  # 🔥 Ganti dengan URL Firebase kamu
+FIREBASE_URL = "https://toko-4960c-default-rtdb.asia-southeast1.firebasedatabase.app/"  # <--- pastikan ini benar
 
-# ---------------------- CONFIG TOKO ----------------------
+
+# ---------------------- CONFIG ----------------------
 def load_config():
     if os.path.exists(CONFIG_FILE):
         with open(CONFIG_FILE, "r") as f:
@@ -21,6 +22,7 @@ def load_config():
         "alamat": "Jl. Buluh Cina, Panam",
         "telepon": "0851-7217-4759"
     }
+
 
 # ---------------------- NOMOR NOTA ----------------------
 def get_next_nota():
@@ -36,31 +38,34 @@ def get_next_nota():
             f.write(str(next_num))
         return f"TRX/{next_num:07d}"
 
-# ---------------------- DATA LOCAL ----------------------
+
+# ---------------------- DATA ----------------------
 def load_data():
     if os.path.exists(DATA_FILE):
         return pd.read_csv(DATA_FILE)
     return pd.DataFrame(columns=[
-        "No Nota", "Tanggal Masuk", "Estimasi Selesai", "Nama Pelanggan",
-        "No HP", "Barang", "Kerusakan", "Kelengkapan", "Status", "Harga Jasa"
+        "No Nota", "Tanggal Masuk", "Estimasi Selesai", "Nama Pelanggan", "No HP",
+        "Barang", "Kerusakan", "Kelengkapan", "Status", "Harga Jasa"
     ])
 
-def save_data_local(df):
+
+def save_data(df):
     df.to_csv(DATA_FILE, index=False)
 
-# ---------------------- FIREBASE ----------------------
-def save_to_firebase(record):
-    """Simpan data ke Firebase Realtime Database"""
+
+# ---------------------- SIMPAN KE FIREBASE ----------------------
+def save_to_firebase(data):
     try:
-        url = f"{FIREBASE_URL}/service_data.json"
-        response = requests.post(url, json=record)
-        if response.status_code == 200:
-            st.success("✅ Data berhasil disimpan ke Firebase!")
+        r = requests.post(f"{FIREBASE_URL}/servis.json", json=data)
+        if r.status_code == 200:
+            return True
         else:
-            st.warning(f"⚠️ Gagal simpan ke Firebase: {response.text}")
+            st.warning(f"Gagal simpan ke Firebase: {r.text}")
+            return False
     except Exception as e:
-        st.error("❌ Gagal mengirim ke Firebase")
-        st.exception(e)
+        st.error(f"Error koneksi Firebase: {e}")
+        return False
+
 
 # ---------------------- PAGE ----------------------
 def show():
@@ -68,7 +73,7 @@ def show():
     st.title("🧾 Servis Baru")
 
     with st.form("form_service"):
-        tanggal_masuk = st.date_input("Tanggal Masuk", value=datetime.date.today())  # 🔹 tambahan input tanggal masuk
+        tanggal_masuk = st.date_input("Tanggal Masuk", value=datetime.date.today())
         estimasi = st.date_input("Estimasi Selesai", value=datetime.date.today() + datetime.timedelta(days=3))
         nama = st.text_input("Nama Pelanggan")
         no_hp = st.text_input("Nomor WhatsApp", placeholder="6281234567890 (tanpa +)")
@@ -84,11 +89,11 @@ def show():
 
         df = load_data()
         nota = get_next_nota()
-        now = datetime.datetime.now()
-        tanggal_masuk_str = datetime.datetime.combine(tanggal_masuk, now.time()).strftime("%d/%m/%Y - %H:%M")
-        estimasi_selesai = datetime.datetime.combine(estimasi, now.time()).strftime("%d/%m/%Y - %H:%M")
 
-        new = {
+        tanggal_masuk_str = tanggal_masuk.strftime("%d/%m/%Y")
+        estimasi_selesai = estimasi.strftime("%d/%m/%Y")
+
+        new = pd.DataFrame([{
             "No Nota": nota,
             "Tanggal Masuk": tanggal_masuk_str,
             "Estimasi Selesai": estimasi_selesai,
@@ -99,14 +104,28 @@ def show():
             "Kelengkapan": kelengkapan,
             "Status": "Cek Dulu",
             "Harga Jasa": ""
+        }])
+
+        df = pd.concat([df, new], ignore_index=True)
+        save_data(df)
+
+        # --- Simpan ke Firebase ---
+        firebase_data = {
+            "no_nota": nota,
+            "tanggal_masuk": tanggal_masuk_str,
+            "estimasi_selesai": estimasi_selesai,
+            "nama_pelanggan": nama,
+            "no_hp": no_hp,
+            "barang": barang,
+            "kerusakan": kerusakan,
+            "kelengkapan": kelengkapan,
+            "status": "Cek Dulu",
+            "harga_jasa": "",
+            "timestamp": datetime.datetime.now().isoformat()
         }
+        save_to_firebase(firebase_data)
 
-        # Simpan ke CSV dan Firebase
-        df = pd.concat([df, pd.DataFrame([new])], ignore_index=True)
-        save_data_local(df)
-        save_to_firebase(new)
-
-        # Format pesan WhatsApp
+        # --- Format pesan WhatsApp ---
         msg = f"""NOTA ELEKTRONIK
 
 💻 *{cfg['nama_toko']}* 💻
@@ -136,8 +155,5 @@ Terima Kasih 🙏"""
         no_hp = str(no_hp).replace("+", "").replace(" ", "").strip()
         link = f"https://wa.me/{no_hp}?text={requests.utils.quote(msg)}"
 
-        st.success(f"✅ Servis {barang} berhasil disimpan!")
+        st.success(f"✅ Servis {barang} berhasil disimpan dan dikirim ke Firebase!")
         st.markdown(f"[📲 KIRIM NOTA SERVIS VIA WHATSAPP]({link})", unsafe_allow_html=True)
-
-# Jalankan Halaman
-show()
