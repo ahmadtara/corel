@@ -1,0 +1,2 @@
+with open(COUNTER_FILE, "w") as f:
+    f.write(str(next_num))
