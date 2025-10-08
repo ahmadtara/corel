@@ -44,7 +44,7 @@ def show():
     # Pastikan kolom tanggal terbaca datetime
     try:
         df["Tanggal Masuk"] = pd.to_datetime(df["Tanggal Masuk"], errors="coerce")
-    except:
+    except Exception:
         pass
 
     # ------------------- FILTER -------------------
@@ -78,8 +78,8 @@ def show():
             st.write(f"💰 Harga Sekarang : {row['Harga Jasa'] if pd.notna(row['Harga Jasa']) else '-'}")
 
             harga_input = st.text_input(
-                f"Masukkan Harga (Rp 100.000)",
-                value=str(row["Harga Jasa"]) if pd.notna(row["Harga Jasa"]) else "",
+                "Masukkan Harga (contoh: 100000)",
+                value=str(row["Harga Jasa"]).replace("Rp ", "").replace(".", "") if pd.notna(row["Harga Jasa"]) else "",
                 key=f"harga_{i}"
             )
 
@@ -91,10 +91,10 @@ def show():
                         st.warning("Masukkan harga jasa terlebih dahulu.")
                         st.stop()
 
-                    # Format harga
-                    harga_baru = harga_input.replace("Rp", "").replace(".", "").replace(",", "").strip()
+                    # Format harga ke Rp 100.000
                     try:
-                        harga_baru = f"Rp {int(harga_baru):,}".replace(",", ".")
+                        harga_num = int(harga_input.replace("Rp", "").replace(".", "").replace(",", "").strip())
+                        harga_baru = f"Rp {harga_num:,}".replace(",", ".")
                     except:
                         harga_baru = harga_input
 
@@ -108,33 +108,33 @@ def show():
 
 Unit anda dengan nomor nota {row['No Nota']} sudah selesai dan siap untuk diambil.
 
+Total Biaya Servis: *{harga_baru}*
+
 Terima Kasih,
 {cfg['nama_toko']}"""
 
-                    # Nomor WA (otomatis +62)
+                    # Nomor WA (otomatis ubah ke 62)
                     no_hp = str(row["No HP"]).replace("+", "").replace(" ", "").strip()
                     if no_hp.startswith("0"):
                         no_hp = "62" + no_hp[1:]
 
                     link = f"https://wa.me/{no_hp}?text={requests.utils.quote(msg)}"
 
-                    # Tampilkan pesan sukses + redirect script
-                    st.success(f"✅ Servis {row['Barang']} selesai ({harga_baru}). Mengirim WhatsApp...")
-
+                    # Tampilkan hasil
+                    st.success(f"✅ Servis {row['Barang']} selesai ({harga_baru}).")
                     st.markdown(
                         f"""
-                        <meta http-equiv="refresh" content="1; url={link}">
-                        <div style="margin-top:10px;">
-                            <a href="{link}" target="_blank" style="
-                                background-color:#25D366;
-                                color:white;
-                                padding:10px 18px;
-                                border-radius:10px;
-                                text-decoration:none;
-                                font-weight:bold;">
-                                📲 Kirim Ulang WA ke {no_hp}
-                            </a>
-                        </div>
+                        <a href="{link}" target="_blank" style="
+                            display:inline-block;
+                            margin-top:10px;
+                            background-color:#25D366;
+                            color:white;
+                            padding:10px 18px;
+                            border-radius:10px;
+                            text-decoration:none;
+                            font-weight:bold;">
+                            📲 Kirim WhatsApp ke {no_hp}
+                        </a>
                         """,
                         unsafe_allow_html=True
                     )
