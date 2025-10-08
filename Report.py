@@ -41,10 +41,9 @@ def show():
         st.info("Belum ada data servis.")
         return
 
-    # Pastikan kolom tanggal terbaca datetime
     try:
         df["Tanggal Masuk"] = pd.to_datetime(df["Tanggal Masuk"], errors="coerce")
-    except Exception:
+    except:
         pass
 
     # ------------------- FILTER -------------------
@@ -91,7 +90,7 @@ def show():
                         st.warning("Masukkan harga jasa terlebih dahulu.")
                         st.stop()
 
-                    # Format harga ke Rp 100.000
+                    # Format harga
                     try:
                         harga_num = int(harga_input.replace("Rp", "").replace(".", "").replace(",", "").strip())
                         harga_baru = f"Rp {harga_num:,}".replace(",", ".")
@@ -103,7 +102,7 @@ def show():
                     df.at[i, "Harga Jasa"] = harga_baru
                     save_data(df)
 
-                    # Format pesan WhatsApp
+                    # Format pesan WA
                     msg = f"""Assalamualaikum {row['Nama Pelanggan']},
 
 Unit anda dengan nomor nota {row['No Nota']} sudah selesai dan siap untuk diambil.
@@ -113,28 +112,36 @@ Total Biaya Servis: *{harga_baru}*
 Terima Kasih,
 {cfg['nama_toko']}"""
 
-                    # Nomor WA (otomatis ubah ke 62)
+                    # Nomor WA otomatis ubah ke 62
                     no_hp = str(row["No HP"]).replace("+", "").replace(" ", "").strip()
                     if no_hp.startswith("0"):
                         no_hp = "62" + no_hp[1:]
 
                     link = f"https://wa.me/{no_hp}?text={requests.utils.quote(msg)}"
 
-                    # Tampilkan hasil
                     st.success(f"✅ Servis {row['Barang']} selesai ({harga_baru}).")
+
+                    # ✅ GUNAKAN JAVASCRIPT UNTUK BUKA DI TAB BARU
+                    js = f"""
+                    <script>
+                        window.open("{link}", "_blank");
+                    </script>
+                    """
+
+                    st.markdown(js, unsafe_allow_html=True)
                     st.markdown(
                         f"""
-                        <a href="{link}" target="_blank" style="
-                            display:inline-block;
-                            margin-top:10px;
-                            background-color:#25D366;
-                            color:white;
-                            padding:10px 18px;
-                            border-radius:10px;
-                            text-decoration:none;
-                            font-weight:bold;">
-                            📲 Kirim WhatsApp ke {no_hp}
-                        </a>
+                        <div style="margin-top:10px;">
+                            <a href="{link}" target="_blank" style="
+                                background-color:#25D366;
+                                color:white;
+                                padding:10px 18px;
+                                border-radius:10px;
+                                text-decoration:none;
+                                font-weight:bold;">
+                                📲 Kirim Ulang WA ke {no_hp}
+                            </a>
+                        </div>
                         """,
                         unsafe_allow_html=True
                     )
