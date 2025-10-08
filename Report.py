@@ -15,26 +15,75 @@ def load_data():
         ])
 
 def show():
-    st.title("📊 Laporan Servis")
+    st.title("📊 Laporan Servis Capslock Komputer")
 
     df = load_data()
     if df.empty:
         st.info("Belum ada data servis.")
         return
 
-    # Statistik
-    total_selesai = df[df["Status"] == "Selesai"].shape[0]
-    total_pemasukan = df.loc[df["Status"] == "Selesai", "Harga Jasa"].apply(
-        lambda x: float(str(x).replace(",", "").replace(".", "")) if str(x).isdigit() else 0
-    ).sum()
+    # Konversi tanggal
+    try:
+        df["Tanggal"] = pd.to_datetime(df["Tanggal"])
+    except:
+        pass
 
-    st.metric("Servis Selesai", total_selesai)
-    st.metric("Total Pemasukan", f"Rp {total_pemasukan:,.0f}")
+    # Statistik umum
+    total_servis = len(df)
+    total_selesai = len(df[df["Status"] == "Selesai"])
+    total_proses = len(df[df["Status"] != "Selesai"])
 
-    # Tabel data
-    st.dataframe(df)
+    # Hitung total pemasukan
+    def to_number(x):
+        try:
+            return float(str(x).replace(",", "").replace(".", ""))
+        except:
+            return 0
 
-    # Unduh CSV
+    df["HargaNum"] = df["Harga Jasa"].apply(to_number)
+    total_pemasukan = df[df["Status"] == "Selesai"]["HargaNum"].sum()
+
+    # Ringkasan
+    col1, col2, col3, col4 = st.columns(4)
+    col1.metric("📦 Total Servis", total_servis)
+    col2.metric("✅ Selesai", total_selesai)
+    col3.metric("🛠️ Proses", total_proses)
+    col4.metric("💰 Total Pemasukan", f"Rp {total_pemasukan:,.0f}")
+
+    st.divider()
+
+    # Filter laporan
+    status_filter = st.multiselect("Filter berdasarkan status:", ["Selesai", "Diterima", "Cek Dulu", "DP", "Lunas"], default=[])
+    if status_filter:
+        df = df[df["Status"].isin(status_filter)]
+
+    date_filter = st.date_input("Filter berdasarkan tanggal masuk", [])
+    if date_filter:
+        df = df[df["Tanggal"].dt.date.isin(date_filter)]
+
+    # Tabel
+    st.dataframe(df.drop(columns=["HargaNum"]), use_container_width=True)
+
+    # Tombol hapus data tertentu
+    st.divider()
+    st.subheader("🗑️ Hapus Beberapa Data")
+    pilih_hapus = st.multiselect(
+        "Pilih data servis yang ingin dihapus:",
+        options=df.index,
+        format_func=lambda x: f"{df.loc[x,'Nama Pelanggan']} - {df.loc[x,'Barang']} ({df.loc[x,'Status']})"
+    )
+
+    if st.button("🚮 Hapus Data Terpilih"):
+        if len(pilih_hapus) > 0:
+            df = df.drop(pilih_hapus).reset_index(drop=True)
+            df.to_csv(DATA_FILE, index=False)
+            st.success("✅ Data yang dipilih telah dihapus.")
+            st.rerun()
+        else:
+            st.warning("Pilih data terlebih dahulu.")
+
+    # Download CSV
+    st.divider()
     csv = df.to_csv(index=False).encode("utf-8")
     st.download_button(
         label="📥 Download Laporan CSV",
