@@ -35,8 +35,8 @@ def save_data(df):
 def show():
     cfg = load_config()
     st.title("📊 Laporan Servis")
-    df = load_data()
 
+    df = load_data()
     if df.empty:
         st.info("Belum ada data servis.")
         return
@@ -63,7 +63,7 @@ def show():
         st.sidebar.info("Belum ada tanggal untuk difilter.")
 
     # ------------------- TAMPIL DATA -------------------
-    st.dataframe(df, use_container_width=True)
+    st.dataframe(df, width="stretch")
     st.divider()
     st.subheader("🧰 Update Status & Kirim WhatsApp")
 
@@ -77,12 +77,10 @@ def show():
             st.write(f"🎒 Kelengkapan : {row['Kelengkapan']}")
             st.write(f"💰 Harga Sekarang : {row['Harga Jasa'] if pd.notna(row['Harga Jasa']) else '-'}")
 
-            # Input harga dengan format Rp otomatis
             harga_input = st.text_input(
-                f"Masukkan Harga (otomatis format Rp)",
+                f"Masukkan Harga (Rp 100.000)",
                 value=str(row["Harga Jasa"]) if pd.notna(row["Harga Jasa"]) else "",
-                key=f"harga_{i}",
-                placeholder="Rp 100.000"
+                key=f"harga_{i}"
             )
 
             col1, col2 = st.columns(2)
@@ -93,7 +91,7 @@ def show():
                         st.warning("Masukkan harga jasa terlebih dahulu.")
                         st.stop()
 
-                    # Format harga Rp (hapus huruf dan format)
+                    # Format harga
                     harga_baru = harga_input.replace("Rp", "").replace(".", "").replace(",", "").strip()
                     try:
                         harga_baru = f"Rp {int(harga_baru):,}".replace(",", ".")
@@ -113,21 +111,35 @@ Unit anda dengan nomor nota {row['No Nota']} sudah selesai dan siap untuk diambi
 Terima Kasih,
 {cfg['nama_toko']}"""
 
+                    # Nomor WA (otomatis +62)
                     no_hp = str(row["No HP"]).replace("+", "").replace(" ", "").strip()
+                    if no_hp.startswith("0"):
+                        no_hp = "62" + no_hp[1:]
+
                     link = f"https://wa.me/{no_hp}?text={requests.utils.quote(msg)}"
 
-                    # Notifikasi berhasil
-                    st.success(f"✅ Servis {row['Barang']} selesai dan tersimpan ({harga_baru}).")
+                    # Tampilkan pesan sukses + redirect script
+                    st.success(f"✅ Servis {row['Barang']} selesai ({harga_baru}). Mengirim WhatsApp...")
 
-                    # Auto-buka WA via JavaScript
-                    js = f"""
-                    <script>
-                    window.open('{link}', '_blank');
-                    </script>
-                    """
-                    st.components.v1.html(js, height=0, width=0)
+                    st.markdown(
+                        f"""
+                        <meta http-equiv="refresh" content="1; url={link}">
+                        <div style="margin-top:10px;">
+                            <a href="{link}" target="_blank" style="
+                                background-color:#25D366;
+                                color:white;
+                                padding:10px 18px;
+                                border-radius:10px;
+                                text-decoration:none;
+                                font-weight:bold;">
+                                📲 Kirim Ulang WA ke {no_hp}
+                            </a>
+                        </div>
+                        """,
+                        unsafe_allow_html=True
+                    )
 
-                    st.rerun()
+                    st.stop()
 
             with col2:
                 if st.button(f"🗑️ Hapus Data Ini #{i}", key=f"del_{i}"):
