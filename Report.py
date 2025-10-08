@@ -2,92 +2,121 @@ import streamlit as st
 import pandas as pd
 import datetime
 import os
+import requests
+import json
 
 DATA_FILE = "service_data.csv"
+CONFIG_FILE = "config.json"
+COUNTER_FILE = "nota_counter.txt"
 
+# ---------------------- CONFIG ----------------------
+def load_config():
+    if os.path.exists(CONFIG_FILE):
+        with open(CONFIG_FILE, "r") as f:
+            return json.load(f)
+    return {
+        "nama_toko": "Capslock Komputer",
+        "alamat": "Jl. Buluh Cina, Panam",
+        "telepon": "0851-7217-4759"
+    }
+
+# ---------------------- NOMOR NOTA ----------------------
+def get_next_nota():
+    if not os.path.exists(COUNTER_FILE):
+        with open(COUNTER_FILE, "w") as f:
+            f.write("1")
+        return "TRX/0000001"
+    else:
+        with open(COUNTER_FILE, "r") as f:
+            current = int(f.read().strip() or 0)
+        next_num = current + 1
+        with open(COUNTER_FILE, "w") as f:
+            f.write(str(next_num))
+        return f"TRX/{next_num:07d}"
+
+# ---------------------- DATA ----------------------
 def load_data():
     if os.path.exists(DATA_FILE):
         return pd.read_csv(DATA_FILE)
-    else:
-        return pd.DataFrame(columns=[
-            "Tanggal","Nama Pelanggan","No HP","Barang",
-            "Kerusakan","Kelengkapan","Status","Harga Jasa"
-        ])
+    return pd.DataFrame(columns=[
+        "No Nota", "Tanggal Masuk", "Estimasi Selesai", "Nama Pelanggan", "No HP",
+        "Barang", "Kerusakan", "Kelengkapan", "Status", "Harga Jasa"
+    ])
 
+def save_data(df):
+    df.to_csv(DATA_FILE, index=False)
+
+# ---------------------- PAGE ----------------------
 def show():
-    st.title("📊 Laporan Servis Capslock Komputer")
+    cfg = load_config()
+    st.title("🧾 Servis Baru")
 
-    df = load_data()
-    if df.empty:
-        st.info("Belum ada data servis.")
-        return
+    with st.form("form_service"):
+        nama = st.text_input("Nama Pelanggan")
+        no_hp = st.text_input("Nomor WhatsApp", placeholder="6281234567890 (tanpa +)")
+        barang = st.text_input("Nama Barang", placeholder="Laptop ASUS A409")
+        kerusakan = st.text_area("Detail Kerusakan", placeholder="Tidak bisa booting")
+        kelengkapan = st.text_area("Kelengkapan", placeholder="Charger, Tas")
+        estimasi = st.date_input("Estimasi Selesai", value=datetime.date.today() + datetime.timedelta(days=3))
+        submitted = st.form_submit_button("💾 Simpan Servis")
 
-    # Konversi tanggal
-    try:
-        df["Tanggal"] = pd.to_datetime(df["Tanggal"])
-    except:
-        pass
+    if submitted:
+        if not all([nama, no_hp, barang]):
+            st.error("Nama, Nomor HP, dan Barang wajib diisi!")
+            return
 
-    # Statistik umum
-    total_servis = len(df)
-    total_selesai = len(df[df["Status"] == "Selesai"])
-    total_proses = len(df[df["Status"] != "Selesai"])
+        df = load_data()
+        nota = get_next_nota()
+        now = datetime.datetime.now()
+        tanggal_masuk = now.strftime("%d/%m/%Y - %H:%M")
+        estimasi_selesai = datetime.datetime.combine(estimasi, now.time()).strftime("%d/%m/%Y - %H:%M")
 
-    # Hitung total pemasukan
-    def to_number(x):
-        try:
-            return float(str(x).replace(",", "").replace(".", ""))
-        except:
-            return 0
+        new = pd.DataFrame([{
+            "No Nota": nota,
+            "Tanggal Masuk": tanggal_masuk,
+            "Estimasi Selesai": estimasi_selesai,
+            "Nama Pelanggan": nama,
+            "No HP": no_hp,
+            "Barang": barang,
+            "Kerusakan": kerusakan,
+            "Kelengkapan": kelengkapan,
+            "Status": "Cek Dulu",
+            "Harga Jasa": ""
+        }])
 
-    df["HargaNum"] = df["Harga Jasa"].apply(to_number)
-    total_pemasukan = df[df["Status"] == "Selesai"]["HargaNum"].sum()
+        df = pd.concat([df, new], ignore_index=True)
+        save_data(df)
 
-    # Ringkasan
-    col1, col2, col3, col4 = st.columns(4)
-    col1.metric("📦 Total Servis", total_servis)
-    col2.metric("✅ Selesai", total_selesai)
-    col3.metric("🛠️ Proses", total_proses)
-    col4.metric("💰 Total Pemasukan", f"Rp {total_pemasukan:,.0f}")
+        # Format pesan WhatsApp
+        msg = f"""NOTA ELEKTRONIK
 
-    st.divider()
+💻 *{cfg['nama_toko']}* 💻
+{cfg['alamat']}
+HP : {cfg['telepon']}
 
-    # Filter laporan
-    status_filter = st.multiselect("Filter berdasarkan status:", ["Selesai", "Diterima", "Cek Dulu", "DP", "Lunas"], default=[])
-    if status_filter:
-        df = df[df["Status"].isin(status_filter)]
+=======================
+*No Nota* : {nota}
+*Pelanggan* : {nama}
 
-    date_filter = st.date_input("Filter berdasarkan tanggal masuk", [])
-    if date_filter:
-        df = df[df["Tanggal"].dt.date.isin(date_filter)]
+*Tanggal Masuk* : {tanggal_masuk}
+*Estimasi Selesai* : {estimasi_selesai}
+=======================
+{barang}
+{kerusakan}
+{kelengkapan}
+=======================
+*Harga* : (Cek Dulu)
+*Status* : Cek Dulu
+Dapatkan Promo Mahasiswa
+=======================
 
-    # Tabel
-    st.dataframe(df.drop(columns=["HargaNum"]), use_container_width=True)
+Best Regard
+Admin {cfg['nama_toko']}
+Terima Kasih 🙏"""
 
-    # Tombol hapus data tertentu
-    st.divider()
-    st.subheader("🗑️ Hapus Beberapa Data")
-    pilih_hapus = st.multiselect(
-        "Pilih data servis yang ingin dihapus:",
-        options=df.index,
-        format_func=lambda x: f"{df.loc[x,'Nama Pelanggan']} - {df.loc[x,'Barang']} ({df.loc[x,'Status']})"
-    )
+        no_hp = str(no_hp).replace("+", "").replace(" ", "").strip()
+        link = f"https://wa.me/{no_hp}?text={requests.utils.quote(msg)}"
 
-    if st.button("🚮 Hapus Data Terpilih"):
-        if len(pilih_hapus) > 0:
-            df = df.drop(pilih_hapus).reset_index(drop=True)
-            df.to_csv(DATA_FILE, index=False)
-            st.success("✅ Data yang dipilih telah dihapus.")
-            st.rerun()
-        else:
-            st.warning("Pilih data terlebih dahulu.")
+        st.success(f"✅ Servis {barang} berhasil disimpan!")
+        st.markdown(f"[📲 KIRIM NOTA SERVIS VIA WHATSAPP]({link})", unsafe_allow_html=True)
 
-    # Download CSV
-    st.divider()
-    csv = df.to_csv(index=False).encode("utf-8")
-    st.download_button(
-        label="📥 Download Laporan CSV",
-        data=csv,
-        file_name=f"Laporan_Servis_{datetime.date.today()}.csv",
-        mime="text/csv"
-    )
