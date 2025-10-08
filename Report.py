@@ -41,6 +41,7 @@ def show():
         st.info("Belum ada data servis.")
         return
 
+    # Konversi tanggal
     try:
         df["Tanggal Masuk"] = pd.to_datetime(df["Tanggal Masuk"], errors="coerce")
     except:
@@ -77,7 +78,7 @@ def show():
             st.write(f"💰 Harga Sekarang : {row['Harga Jasa'] if pd.notna(row['Harga Jasa']) else '-'}")
 
             harga_input = st.text_input(
-                "Masukkan Harga (contoh: 100000)",
+                "Masukkan Harga (contoh: 150000)",
                 value=str(row["Harga Jasa"]).replace("Rp ", "").replace(".", "") if pd.notna(row["Harga Jasa"]) else "",
                 key=f"harga_{i}"
             )
@@ -97,38 +98,41 @@ def show():
                     except:
                         harga_baru = harga_input
 
-                    # Update data
+                    # Update data ke CSV
                     df.at[i, "Status"] = "Lunas"
                     df.at[i, "Harga Jasa"] = harga_baru
                     save_data(df)
 
-                    # Format pesan WA
+                    # Buat pesan WA
                     msg = f"""Assalamualaikum {row['Nama Pelanggan']},
 
-Unit anda dengan nomor nota {row['No Nota']} sudah selesai dan siap untuk diambil.
+Unit anda dengan nomor nota *{row['No Nota']}* sudah selesai dan siap untuk diambil.
 
 Total Biaya Servis: *{harga_baru}*
 
-Terima Kasih,
+Terima Kasih 🙏
 {cfg['nama_toko']}"""
 
-                    # Nomor WA otomatis ubah ke 62
+                    # Format nomor HP
                     no_hp = str(row["No HP"]).replace("+", "").replace(" ", "").strip()
                     if no_hp.startswith("0"):
                         no_hp = "62" + no_hp[1:]
 
                     link = f"https://wa.me/{no_hp}?text={requests.utils.quote(msg)}"
 
-                    st.success(f"✅ Servis {row['Barang']} selesai ({harga_baru}).")
-
-                    # ✅ GUNAKAN JAVASCRIPT UNTUK BUKA DI TAB BARU
+                    st.success(f"✅ Servis {row['Barang']} diselesaikan ({harga_baru}).")
+                    
+                    # 🔥 Buka WA otomatis (langsung kirim)
                     js = f"""
                     <script>
-                        window.open("{link}", "_blank");
+                        setTimeout(function(){{
+                            window.open("{link}", "_blank");
+                        }}, 800);
                     </script>
                     """
-
                     st.markdown(js, unsafe_allow_html=True)
+
+                    # Tombol manual juga disediakan
                     st.markdown(
                         f"""
                         <div style="margin-top:10px;">
