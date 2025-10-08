@@ -27,12 +27,21 @@ def load_config():
 # ---------------------- DATA ----------------------
 def load_data():
     if os.path.exists(DATA_FILE):
-        return pd.read_csv(DATA_FILE)
+        df = pd.read_csv(DATA_FILE)
     else:
-        return pd.DataFrame(columns=[
+        df = pd.DataFrame(columns=[
             "Tanggal", "Nama Pelanggan", "No HP", "Barang",
             "Kerusakan", "Kelengkapan", "Status", "Harga Jasa"
         ])
+
+    # Pastikan semua kolom ada
+    for col in ["Tanggal", "Nama Pelanggan", "No HP", "Barang",
+                "Kerusakan", "Kelengkapan", "Status", "Harga Jasa"]:
+        if col not in df.columns:
+            df[col] = ""
+
+    return df
+
 
 def save_data(df):
     df.to_csv(DATA_FILE, index=False)
@@ -111,6 +120,24 @@ def show():
         st.info("Belum ada servis masuk.")
         return
 
+    # Pilih beberapa data yang ingin dihapus
+    st.markdown("### 🗑️ Hapus Beberapa Data")
+    pilih_hapus = st.multiselect(
+        "Pilih servis yang ingin dihapus:",
+        options=df.index,
+        format_func=lambda x: f"{df.loc[x, 'Nama Pelanggan']} - {df.loc[x, 'Barang']} ({df.loc[x, 'Status']})"
+    )
+    if st.button("🚮 Hapus yang Dipilih"):
+        if pilih_hapus:
+            df = df.drop(pilih_hapus).reset_index(drop=True)
+            save_data(df)
+            st.success("✅ Data terpilih berhasil dihapus.")
+            st.rerun()
+        else:
+            st.warning("Pilih data yang ingin dihapus dulu!")
+
+    st.divider()
+
     for i, row in df.iterrows():
         with st.expander(f"{row['Nama Pelanggan']} - {row['Barang']} ({row['Status']})"):
             st.write(f"📅 **Tanggal:** {row['Tanggal']}")
@@ -123,7 +150,11 @@ def show():
 
             col1, col2, col3 = st.columns(3)
             with col1:
-                harga_input = st.text_input(f"Harga Jasa #{i}", value=str(row["Harga Jasa"]) if pd.notna(row["Harga Jasa"]) else "", key=f"harga_{i}")
+                harga_input = st.text_input(
+                    f"Harga Jasa #{i}",
+                    value=str(row["Harga Jasa"]) if pd.notna(row["Harga Jasa"]) else "",
+                    key=f"harga_{i}"
+                )
                 if st.button(f"✅ Tandai Selesai #{i}", key=f"done_{i}"):
                     if harga_input.strip() == "":
                         st.warning("Masukkan harga jasa terlebih dahulu.")
@@ -132,14 +163,18 @@ def show():
                         df.at[i, "Harga Jasa"] = harga_input
                         save_data(df)
                         st.success(f"Servis {row['Barang']} selesai (Rp {harga_input}).")
+                        st.rerun()
 
             with col2:
                 if st.button(f"💬 Kirim WA #{i}", key=f"wa_{i}"):
-                    msg = cfg["template_wa"].format(nama=row["Nama Pelanggan"], barang=row["Barang"])
+                    msg = cfg["template_wa"].format(
+                        nama=row["Nama Pelanggan"],
+                        barang=row["Barang"]
+                    )
                     no_hp = str(row["No HP"]).replace("+", "").replace(" ", "").strip()
                     if no_hp:
                         link = f"https://wa.me/{no_hp}?text={requests.utils.quote(msg)}"
-                        st.markdown(f"[📲 Kirim WhatsApp ke {no_hp}]({link})")
+                        st.markdown(f"[📲 Kirim WhatsApp ke {no_hp}]({link})", unsafe_allow_html=True)
                     else:
                         st.warning("⚠️ Nomor HP kosong, tidak bisa kirim WhatsApp.")
 
@@ -147,3 +182,5 @@ def show():
                 if st.button(f"🗑️ Hapus #{i}", key=f"del_{i}"):
                     df = df.drop(index=i).reset_index(drop=True)
                     save_data(df)
+                    st.success(f"Data servis {row['Barang']} dihapus.")
+                    st.rerun()
