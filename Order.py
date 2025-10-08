@@ -13,7 +13,11 @@ GITHUB_BRANCH = st.secrets.get("GITHUB_BRANCH", "main")
 
 SERVICE_FILE = "service_data.csv"
 COUNTER_FILE = "nota_counter.txt"
-CONFIG_FILE = "config.json"
+
+# Info toko langsung di kode
+TOKO_NAMA = "Capslock Komputer"
+TOKO_ALAMAT = "Jl. Buluh Cina, Panam"
+TOKO_TELEPON = "0851-7217-4759"
 
 # ================== FUNGSI GITHUB GENERIK ==================
 def github_get_file(path):
@@ -37,21 +41,6 @@ def github_update_file(path, new_content, sha=None):
         data["sha"] = sha
     r = requests.put(url, headers=headers, data=json.dumps(data))
     return r.status_code in [200, 201]
-
-# ================== CONFIG TOKO ==================
-def load_config():
-    data, _ = github_get_file(CONFIG_FILE)
-    if data:
-        return json.loads(data)
-    else:
-        # Jika file belum ada, buat default dan simpan ke GitHub
-        default_cfg = {
-            "nama_toko": "Capslock Komputer",
-            "alamat": "Jl. Buluh Cina, Panam",
-            "telepon": "0851-7217-4759"
-        }
-        github_update_file(CONFIG_FILE, json.dumps(default_cfg, indent=2))
-        return default_cfg
 
 # ================== NOMOR NOTA ==================
 def get_next_nota():
@@ -84,7 +73,6 @@ def save_data(df, sha):
 
 # ================== PAGE ==================
 def show():
-    cfg = load_config()
     st.title("🧾 Servis Baru")
 
     df, sha = load_data()
@@ -126,9 +114,9 @@ def show():
         if save_data(df, sha):
             msg = f"""NOTA ELEKTRONIK
 
-💻 *{cfg['nama_toko']}* 💻
-{cfg['alamat']}
-HP : {cfg['telepon']}
+💻 *{TOKO_NAMA}* 💻
+{TOKO_ALAMAT}
+HP : {TOKO_TELEPON}
 
 =======================
 *No Nota* : {nota}
@@ -147,7 +135,7 @@ Dapatkan Promo Mahasiswa
 =======================
 
 Best Regard
-Admin {cfg['nama_toko']}
+Admin {TOKO_NAMA}
 Terima Kasih 🙏"""
 
             no_hp_clean = str(no_hp).replace("+", "").replace(" ", "").strip()
