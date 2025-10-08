@@ -79,10 +79,21 @@ def show():
         st.info("Belum ada data servis.")
         return
 
-    # Konversi tanggal & hitung keuntungan
+    # ------------------- KONVERSI TANGGAL -------------------
     df["Tanggal Masuk"] = pd.to_datetime(df["Tanggal Masuk"], errors="coerce")
-    df["Harga Jasa Num"] = df["Harga Jasa"].replace("Rp","").replace(".","", regex=True).fillna("0").astype(int)
-    df["Harga Modal Num"] = df["Harga Modal"].replace("Rp","").replace(".","", regex=True).fillna("0").astype(int)
+
+    # ------------------- KONVERSI HARGA AMAN -------------------
+    def parse_rp_to_int(x):
+        try:
+            # hapus 'Rp', '.', ',' dan spasi
+            s = str(x).replace("Rp","").replace(".","").replace(",","").strip()
+            return int(s) if s else 0
+        except:
+            return 0
+
+    df["Harga Jasa Num"] = df["Harga Jasa"].apply(parse_rp_to_int)
+    df["Harga Modal Num"] = df["Harga Modal"].apply(parse_rp_to_int)
+
     df["Keuntungan"] = df["Harga Jasa Num"] - df["Harga Modal Num"]
 
     # ------------------- FILTER BULAN -------------------
@@ -120,13 +131,13 @@ def show():
             if st.button("✅ Update & Kirim WA", key=f"btn_{i}"):
                 # Update harga modal
                 try:
-                    harga_modal_num = int(harga_modal_input.replace(".","").strip())
+                    harga_modal_num = int(str(harga_modal_input).replace(".","").strip())
                 except:
                     harga_modal_num = 0
 
                 # Update harga jasa
                 try:
-                    harga_jasa_num = int(harga_jasa_input.replace(".","").strip())
+                    harga_jasa_num = int(str(harga_jasa_input).replace(".","").strip())
                 except:
                     harga_jasa_num = 0
 
