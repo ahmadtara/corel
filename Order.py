@@ -31,14 +31,14 @@ def load_data():
     else:
         return pd.DataFrame(columns=[
             "Tanggal", "Nama Pelanggan", "No HP", "Barang",
-            "Kerusakan", "Kelengkapan", "Status"
+            "Kerusakan", "Kelengkapan", "Status", "Harga Jasa"
         ])
 
 def save_data(df):
     df.to_csv(DATA_FILE, index=False)
 
 # ---------------------- PDF STRUK ----------------------
-def buat_struk_pdf(cfg, nama, no_hp, barang, kerusakan, kelengkapan):
+def buat_struk_pdf(cfg, nama, no_hp, barang, kerusakan, kelengkapan, harga=None):
     temp_file = tempfile.NamedTemporaryFile(delete=False, suffix=".pdf")
     c = canvas.Canvas(temp_file.name, pagesize=A7)
     c.setFont("Helvetica-Bold", 10)
@@ -54,15 +54,17 @@ def buat_struk_pdf(cfg, nama, no_hp, barang, kerusakan, kelengkapan):
     c.drawString(10, 300, f"Barang  : {barang}")
     c.drawString(10, 285, f"Kerusakan : {kerusakan}")
     c.drawString(10, 270, f"Kelengkapan : {kelengkapan}")
+    if harga:
+        c.drawString(10, 255, f"Harga Jasa : Rp {harga}")
 
-    c.line(10, 260, 190, 260)
-    c.drawString(10, 245, "Barang diterima untuk diperiksa/servis.")
-    c.drawCentredString(105, 230, cfg["footer_nota"])
+    c.line(10, 245, 190, 245)
+    c.drawString(10, 230, "Barang diterima untuk diperiksa/servis.")
+    c.drawCentredString(105, 215, cfg["footer_nota"])
     c.showPage()
     c.save()
     return temp_file.name
 
-# ---------------------- UI ----------------------
+# ---------------------- PAGE ----------------------
 def show():
     cfg = load_config()
     st.title("🧾 Input Servis Baru")
@@ -88,7 +90,8 @@ def show():
             "Barang": barang,
             "Kerusakan": kerusakan,
             "Kelengkapan": kelengkapan,
-            "Status": "Diterima"
+            "Status": "Diterima",
+            "Harga Jasa": ""
         }])
         df = pd.concat([df, new], ignore_index=True)
         save_data(df)
@@ -115,27 +118,32 @@ def show():
             st.write(f"💻 **Barang:** {row['Barang']}")
             st.write(f"🧩 **Kerusakan:** {row['Kerusakan']}")
             st.write(f"🎒 **Kelengkapan:** {row['Kelengkapan']}")
+            st.write(f"💰 **Harga Jasa:** {row['Harga Jasa'] if pd.notna(row['Harga Jasa']) else '-'}")
             st.write(f"📦 **Status:** {row['Status']}")
 
-            col1, col2 = st.columns(2)
+            col1, col2, col3 = st.columns(3)
             with col1:
+                harga_input = st.text_input(f"Harga Jasa #{i}", value=str(row["Harga Jasa"]) if pd.notna(row["Harga Jasa"]) else "", key=f"harga_{i}")
                 if st.button(f"✅ Tandai Selesai #{i}", key=f"done_{i}"):
-                    df.at[i, "Status"] = "Selesai"
-                    save_data(df)
-                    st.success("Servis ditandai selesai.")
+                    if harga_input.strip() == "":
+                        st.warning("Masukkan harga jasa terlebih dahulu.")
+                    else:
+                        df.at[i, "Status"] = "Selesai"
+                        df.at[i, "Harga Jasa"] = harga_input
+                        save_data(df)
+                        st.success(f"Servis {row['Barang']} selesai (Rp {harga_input}).")
 
             with col2:
                 if st.button(f"💬 Kirim WA #{i}", key=f"wa_{i}"):
-                    msg = cfg["template_wa"].format(
-                        nama=row["Nama Pelanggan"],
-                        barang=row["Barang"]
-                    )
-
-                    # --- PERBAIKAN LINK WA RESMI ---
+                    msg = cfg["template_wa"].format(nama=row["Nama Pelanggan"], barang=row["Barang"])
                     no_hp = str(row["No HP"]).replace("+", "").replace(" ", "").strip()
                     if no_hp:
                         link = f"https://wa.me/{no_hp}?text={requests.utils.quote(msg)}"
                         st.markdown(f"[📲 Kirim WhatsApp ke {no_hp}]({link})")
-                        st.info(f"Link WhatsApp: {link}")
                     else:
                         st.warning("⚠️ Nomor HP kosong, tidak bisa kirim WhatsApp.")
+
+            with col3:
+                if st.button(f"🗑️ Hapus #{i}", key=f"del_{i}"):
+                    df = df.drop(index=i).reset_index(drop=True)
+                    save_data(df)
