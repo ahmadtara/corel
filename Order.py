@@ -4,12 +4,9 @@ import datetime
 import os
 import json
 import requests
-from google.oauth2.credentials import Credentials
-from google_auth_oauthlib.flow import Flow
-from google.auth.transport.requests import Request
-from googleapiclient.discovery import build
 from googleapiclient.http import MediaFileUpload
 from googleapiclient.errors import HttpError
+from drive_auth import get_drive_service  # ✅ Login Google cukup di app.py
 
 # =============== KONFIGURASI FILE ===============
 DATA_FILE = "service_data.csv"
@@ -19,64 +16,32 @@ COUNTER_FILE = "nota_counter.txt"
 # Folder Drive tujuan
 GDRIVE_FOLDER_ID = "12DDRZahmr5pkrmoasagsAvWPoFVNJ6Ze"
 
-# Konfigurasi Google OAuth
-SCOPES = ['https://www.googleapis.com/auth/drive.file']
-CLIENT_SECRET_FILE = 'credentials.json'
-TOKEN_FILE = 'token.json'
-
-# =============== AUTENTIKASI GOOGLE DRIVE ===============
-def save_token(creds):
-    with open(TOKEN_FILE, 'w') as token:
-        token.write(creds.to_json())
-
-def load_token():
-    if os.path.exists(TOKEN_FILE):
-        creds = Credentials.from_authorized_user_file(TOKEN_FILE, SCOPES)
-        if creds and creds.expired and creds.refresh_token:
-            creds.refresh(Request())
-            save_token(creds)
-        return creds
-    return None
-
-def get_drive_service():
-    creds = load_token()
-    if creds:
-        return build('drive', 'v3', credentials=creds)
-
-    flow = Flow.from_client_secrets_file(
-        CLIENT_SECRET_FILE,
-        scopes=SCOPES,
-        redirect_uri="https://tara-capslock.streamlit.app/"
-    )
-
-    query_params = st.query_params
-    if "code" in query_params:
-        code = query_params["code"]
-        flow.fetch_token(code=code)
-        creds = flow.credentials
-        save_token(creds)
-        st.success("✅ Autentikasi Google berhasil! Klik ulang tombol Simpan.")
-        st.rerun()
-
-    auth_url, _ = flow.authorization_url(
-        prompt='consent', access_type='offline', include_granted_scopes='true'
-    )
-    st.markdown(f"[🔐 Login Google Drive]({auth_url})", unsafe_allow_html=True)
-    st.stop()
-
 # =============== UPLOAD FILE KE DRIVE ===============
 def upload_to_drive(local_path, filename):
+    """Upload file lokal ke Google Drive."""
     try:
         service = get_drive_service()
         if not service:
-            st.error("❌ Gagal konek ke Google Drive")
+            st.error("❌ Belum login Google Drive.")
             return
+
+        # Cek apakah file sudah ada → update bukan buat baru
+        query = f"name='{filename}' and '{GDRIVE_FOLDER_ID}' in parents and trashed=false"
+        result = service.files().list(q=query, fields="files(id, name)").execute()
+        files = result.get('files', [])
 
         file_metadata = {'name': filename, 'parents': [GDRIVE_FOLDER_ID]}
         media = MediaFileUpload(local_path, resumable=True)
-        uploaded = service.files().create(body=file_metadata, media_body=media, fields='id').execute()
+
+        if files:
+            file_id = files[0]['id']
+            service.files().update(fileId=file_id, media_body=media).execute()
+        else:
+            service.files().create(body=file_metadata, media_body=media, fields='id').execute()
+
         link = f"https://drive.google.com/drive/folders/{GDRIVE_FOLDER_ID}"
-        st.info(f"✅ File **{filename}** berhasil diupload ke [Google Drive]({link})")
+        st.info(f"✅ File **{filename}** berhasil disinkronkan ke [Google Drive]({link})")
+
     except HttpError as error:
         st.error("❌ Gagal upload ke Google Drive.")
         st.exception(error)
@@ -103,7 +68,8 @@ def get_next_nota():
         return "TRX/0000001"
     else:
         with open(COUNTER_FILE, "r") as f:
-            current = int(f.read().strip() or 0)
+            content = f.read().strip()
+            current = int(content) if content.isdigit() else 0
         next_num = current + 1
         with open(COUNTER_FILE, "w") as f:
             f.write(str(next_num))
@@ -115,12 +81,11 @@ def load_data():
         return pd.read_csv(DATA_FILE)
     return pd.DataFrame(columns=[
         "No Nota", "Tanggal Masuk", "Estimasi Selesai", "Nama Pelanggan", "No HP",
-        "Barang", "Kerusakan", "Kelengkapan", "Status", "Harga Jasa"
+        "Barang", "Kerusakan", "Kelengkapan", "Status", "Harga Modal", "Harga Jasa"
     ])
 
 def save_data(df):
     df.to_csv(DATA_FILE, index=False)
-    # upload ke drive juga
     upload_to_drive(DATA_FILE, "service_data.csv")
     upload_to_drive(COUNTER_FILE, "nota_counter.txt")
 
@@ -140,8 +105,8 @@ def show():
         submitted = st.form_submit_button("💾 Simpan Servis")
 
     if submitted:
-        if not all([nama, no_hp, barang]):
-            st.error("Nama, Nomor HP, dan Barang wajib diisi!")
+        if not all([nama.strip(), no_hp.strip(), barang.strip()]):
+            st.error("❌ Nama, Nomor HP, dan Barang wajib diisi!")
             return
 
         df = load_data()
@@ -160,13 +125,14 @@ def show():
             "Kerusakan": kerusakan,
             "Kelengkapan": kelengkapan,
             "Status": "Cek Dulu",
+            "Harga Modal": "",
             "Harga Jasa": ""
         }])
 
         df = pd.concat([df, new], ignore_index=True)
         save_data(df)
 
-        # WhatsApp message
+        # ========== WhatsApp Message ==========
         msg = f"""NOTA ELEKTRONIK
 
 💻 *{cfg['nama_toko']}* 💻
@@ -186,19 +152,14 @@ HP : {cfg['telepon']}
 =======================
 *Harga* : (Cek Dulu)
 *Status* : Cek Dulu
-Dapatkan Promo Mahasiswa
 =======================
 
 Best Regard
 Admin {cfg['nama_toko']}
 Terima Kasih 🙏"""
 
-        no_hp = str(no_hp).replace("+", "").replace(" ", "").strip()
-        link = f"https://wa.me/{no_hp}?text={requests.utils.quote(msg)}"
+        no_hp_fmt = str(no_hp).replace("+", "").replace(" ", "").strip()
+        link = f"https://wa.me/{no_hp_fmt}?text={requests.utils.quote(msg)}"
 
-        st.success(f"✅ Servis {barang} berhasil disimpan dan diupload ke Google Drive!")
+        st.success(f"✅ Servis {barang} berhasil disimpan & disinkronkan ke Google Drive.")
         st.markdown(f"[📲 KIRIM NOTA SERVIS VIA WHATSAPP]({link})", unsafe_allow_html=True)
-
-
-# =============== RUN PAGE ===============
-show()
