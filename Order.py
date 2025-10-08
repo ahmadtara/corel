@@ -30,7 +30,7 @@ def load_data():
         return pd.read_csv(DATA_FILE)
     else:
         return pd.DataFrame(columns=[
-            "Tanggal", "Nama Pelanggan", "No HP", "Barang", 
+            "Tanggal", "Nama Pelanggan", "No HP", "Barang",
             "Kerusakan", "Kelengkapan", "Status"
         ])
 
@@ -69,13 +69,17 @@ def show():
 
     with st.form("form_service"):
         nama = st.text_input("Nama Pelanggan")
-        no_hp = st.text_input("Nomor WhatsApp", placeholder="+6281234567890")
+        no_hp = st.text_input("Nomor WhatsApp", placeholder="6281234567890 (tanpa +)")
         barang = st.text_input("Nama Barang", placeholder="Laptop ASUS A409")
         kerusakan = st.text_area("Detail Kerusakan", placeholder="Tidak bisa booting")
         kelengkapan = st.text_area("Kelengkapan", placeholder="Charger, Tas")
         submitted = st.form_submit_button("💾 Simpan Servis")
 
     if submitted:
+        if not all([nama, no_hp, barang]):
+            st.error("Nama, Nomor HP, dan Barang wajib diisi!")
+            return
+
         df = load_data()
         new = pd.DataFrame([{
             "Tanggal": datetime.date.today(),
@@ -106,12 +110,12 @@ def show():
 
     for i, row in df.iterrows():
         with st.expander(f"{row['Nama Pelanggan']} - {row['Barang']} ({row['Status']})"):
-            st.write(f"📅 {row['Tanggal']}")
-            st.write(f"📞 {row['No HP']}")
-            st.write(f"💻 {row['Barang']}")
-            st.write(f"🧩 {row['Kerusakan']}")
-            st.write(f"🎒 {row['Kelengkapan']}")
-            st.write(f"📦 Status: {row['Status']}")
+            st.write(f"📅 **Tanggal:** {row['Tanggal']}")
+            st.write(f"📞 **No HP:** {row['No HP']}")
+            st.write(f"💻 **Barang:** {row['Barang']}")
+            st.write(f"🧩 **Kerusakan:** {row['Kerusakan']}")
+            st.write(f"🎒 **Kelengkapan:** {row['Kelengkapan']}")
+            st.write(f"📦 **Status:** {row['Status']}")
 
             col1, col2 = st.columns(2)
             with col1:
@@ -119,11 +123,19 @@ def show():
                     df.at[i, "Status"] = "Selesai"
                     save_data(df)
                     st.success("Servis ditandai selesai.")
+
             with col2:
                 if st.button(f"💬 Kirim WA #{i}", key=f"wa_{i}"):
                     msg = cfg["template_wa"].format(
                         nama=row["Nama Pelanggan"],
                         barang=row["Barang"]
                     )
-                    link = f"https://wa.me/{row['No HP'].replace('+','').replace(' ','')}/?text={requests.utils.quote(msg)}"
-                    st.markdown(f"[📲 Buka WhatsApp]({link})")
+
+                    # --- PERBAIKAN LINK WA RESMI ---
+                    no_hp = str(row["No HP"]).replace("+", "").replace(" ", "").strip()
+                    if no_hp:
+                        link = f"https://wa.me/{no_hp}?text={requests.utils.quote(msg)}"
+                        st.markdown(f"[📲 Kirim WhatsApp ke {no_hp}]({link})")
+                        st.info(f"Link WhatsApp: {link}")
+                    else:
+                        st.warning("⚠️ Nomor HP kosong, tidak bisa kirim WhatsApp.")
