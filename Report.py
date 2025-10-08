@@ -4,6 +4,7 @@ import requests
 import datetime
 import base64
 import json
+import io   # ✅ tambahkan untuk StringIO
 
 # ================== KONFIGURASI GITHUB ==================
 GITHUB_TOKEN = st.secrets["GITHUB_TOKEN"]
@@ -45,7 +46,8 @@ def github_update_file(new_content, sha):
 def load_data():
     data, sha = github_get_file()
     if data:
-        df = pd.read_csv(pd.compat.StringIO(data))
+        # ✅ Perbaikan di sini
+        df = pd.read_csv(io.StringIO(data))
         if "Harga Modal" not in df.columns:
             df["Harga Modal"] = ""
         return df, sha
