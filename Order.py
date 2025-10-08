@@ -4,20 +4,20 @@ import datetime
 import json
 import requests
 import base64
+import io
 
 # ================== KONFIGURASI ==================
 GITHUB_TOKEN = st.secrets["GITHUB_TOKEN"]
-GITHUB_REPO = st.secrets["GITHUB_REPO"]        # Contoh: "username/nama-repo"
-GITHUB_FILE = st.secrets["GITHUB_FILE"]        # Contoh: "service_data.csv"
+GITHUB_REPO = st.secrets["GITHUB_REPO"]
 GITHUB_BRANCH = st.secrets.get("GITHUB_BRANCH", "main")
 
-CONFIG_FILE = "config.json"
+SERVICE_FILE = "service_data.csv"
 COUNTER_FILE = "nota_counter.txt"
+CONFIG_FILE = "config.json"
 
-# ================== FUNGSI GITHUB ==================
-def github_get_file():
-    """Ambil isi file CSV dari GitHub."""
-    url = f"https://api.github.com/repos/{GITHUB_REPO}/contents/{GITHUB_FILE}?ref={GITHUB_BRANCH}"
+# ================== FUNGSI GITHUB GENERIK ==================
+def github_get_file(path):
+    url = f"https://api.github.com/repos/{GITHUB_REPO}/contents/{path}?ref={GITHUB_BRANCH}"
     headers = {"Authorization": f"token {GITHUB_TOKEN}"}
     r = requests.get(url, headers=headers)
     if r.status_code == 200:
@@ -25,66 +25,62 @@ def github_get_file():
         data = base64.b64decode(content["content"]).decode("utf-8")
         sha = content["sha"]
         return data, sha
-    else:
-        return None, None
+    return None, None
 
-def github_update_file(new_content, sha):
-    """Update file CSV ke GitHub."""
-    url = f"https://api.github.com/repos/{GITHUB_REPO}/contents/{GITHUB_FILE}"
+def github_update_file(path, new_content, sha=None):
+    url = f"https://api.github.com/repos/{GITHUB_REPO}/contents/{path}"
     headers = {"Authorization": f"token {GITHUB_TOKEN}"}
-    message = f"Update service data - {datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')}"
+    message = f"Update {path} - {datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')}"
     content = base64.b64encode(new_content.encode("utf-8")).decode("utf-8")
-    data = {
-        "message": message,
-        "content": content,
-        "branch": GITHUB_BRANCH,
-        "sha": sha
-    }
+    data = {"message": message, "content": content, "branch": GITHUB_BRANCH}
+    if sha:
+        data["sha"] = sha
     r = requests.put(url, headers=headers, data=json.dumps(data))
-    if r.status_code in [200, 201]:
-        return True
-    else:
-        st.error(f"Gagal update GitHub: {r.text}")
-        return False
+    return r.status_code in [200, 201]
 
 # ================== CONFIG TOKO ==================
 def load_config():
-    return {
-        "nama_toko": "Capslock Komputer",
-        "alamat": "Jl. Buluh Cina, Panam",
-        "telepon": "0851-7217-4759"
-    }
+    data, _ = github_get_file(CONFIG_FILE)
+    if data:
+        return json.loads(data)
+    else:
+        # Jika file belum ada, buat default dan simpan ke GitHub
+        default_cfg = {
+            "nama_toko": "Capslock Komputer",
+            "alamat": "Jl. Buluh Cina, Panam",
+            "telepon": "0851-7217-4759"
+        }
+        github_update_file(CONFIG_FILE, json.dumps(default_cfg, indent=2))
+        return default_cfg
 
 # ================== NOMOR NOTA ==================
 def get_next_nota():
-    import os
-    if not os.path.exists(COUNTER_FILE):
-        with open(COUNTER_FILE, "w") as f:
-            f.write("1")
-        return "TRX/0000001"
-    else:
-        with open(COUNTER_FILE, "r") as f:
-            current = int(f.read().strip() or 0)
-        next_num = current + 1
-        with open(COUNTER_FILE, "w") as f:
-            f.write(str(next_num))
-        return f"TRX/{next_num:07d}"
-
-# ================== DATA ==================
-def load_data():
-    data, sha = github_get_file()
+    data, sha = github_get_file(COUNTER_FILE)
     if data:
-        df = pd.read_csv(pd.compat.StringIO(data))
+        current = int(data.strip())
+    else:
+        current = 0
+        sha = None
+    next_num = current + 1
+    github_update_file(COUNTER_FILE, str(next_num), sha)
+    return f"TRX/{next_num:07d}"
+
+# ================== DATA SERVIS ==================
+def load_data():
+    data, sha = github_get_file(SERVICE_FILE)
+    if data:
+        df = pd.read_csv(io.StringIO(data))
         return df, sha
     else:
-        return pd.DataFrame(columns=[
-            "No Nota", "Tanggal Masuk", "Estimasi Selesai", "Nama Pelanggan", "No HP",
-            "Barang", "Kerusakan", "Kelengkapan", "Status", "Harga Jasa"
-        ]), None
+        df = pd.DataFrame(columns=[
+            "No Nota", "Tanggal Masuk", "Estimasi Selesai", "Nama Pelanggan",
+            "No HP", "Barang", "Kerusakan", "Kelengkapan", "Status", "Harga Jasa"
+        ])
+        return df, None
 
 def save_data(df, sha):
     csv_content = df.to_csv(index=False)
-    return github_update_file(csv_content, sha)
+    return github_update_file(SERVICE_FILE, csv_content, sha)
 
 # ================== PAGE ==================
 def show():
@@ -128,7 +124,6 @@ def show():
 
         df = pd.concat([df, new], ignore_index=True)
         if save_data(df, sha):
-            # Format pesan WA
             msg = f"""NOTA ELEKTRONIK
 
 💻 *{cfg['nama_toko']}* 💻
