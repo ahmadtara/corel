@@ -12,3 +12,4 @@ owslib
 folium
 streamlit-folium
 reportlab>=4.2.0
+streamlit-option-menu
