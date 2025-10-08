@@ -1,4 +1,8 @@
 streamlit
+streamlit-folium
+streamlit-option-menu
+reportlab
+pillow
 openpyxl   # kalau mau export XLSX
 pandas     # kalau mau olah tabel marker
 lxml
@@ -10,6 +14,3 @@ geopandas
 fastkml
 owslib
 folium
-streamlit-folium
-reportlab>=4.2.0
-streamlit-option-menu
