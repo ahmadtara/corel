@@ -1,25 +1,21 @@
 import streamlit as st
+from streamlit_option_menu import option_menu
+import Order, Report, Setting
 
-st.set_page_config(page_title="Capslock Komputer Service", layout="centered")
+st.set_page_config(page_title="Servis Center", page_icon="🧾", layout="centered")
 
-st.sidebar.title("🧰 Capslock Komputer")
-menu = st.sidebar.radio(
-    "Menu",
-    ["🏠 Home", "🧾 Order Servis", "📊 Laporan", "⚙️ Pengaturan"]
-)
+with st.sidebar:
+    selected = option_menu(
+        "📱 Capslock Komputer",
+        ["🧾 Order", "📈 Report", "⚙️ Setting"],
+        icons=["file-earmark-plus", "bar-chart-line", "gear"],
+        menu_icon="pc-display",
+        default_index=0
+    )
 
-if menu == "🏠 Home":
-    import Home
-    Home.show()
-
-elif menu == "🧾 Order Servis":
-    import Order
+if selected == "🧾 Order":
     Order.show()
-
-elif menu == "📊 Laporan":
-    import Report
+elif selected == "📈 Report":
     Report.show()
-
-elif menu == "⚙️ Pengaturan":
-    import Setting
+elif selected == "⚙️ Setting":
     Setting.show()
