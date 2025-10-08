@@ -1,90 +1,14 @@
 import streamlit as st
 import pandas as pd
-import datetime
 import os
 import json
 import requests
-from google.oauth2.credentials import Credentials
-from google_auth_oauthlib.flow import Flow
-from google.auth.transport.requests import Request
-from googleapiclient.discovery import build
-from googleapiclient.http import MediaFileUpload
-from googleapiclient.errors import HttpError
+import datetime
 
-# =============== KONFIGURASI FILE ===============
 DATA_FILE = "service_data.csv"
 CONFIG_FILE = "config.json"
-COUNTER_FILE = "nota_counter.txt"
 
-# Folder Drive tujuan
-GDRIVE_FOLDER_ID = "12DDRZahmr5pkrmoasagsAvWPoFVNJ6Ze"
-
-# Konfigurasi Google OAuth
-SCOPES = ['https://www.googleapis.com/auth/drive.file']
-CLIENT_SECRET_FILE = 'credentials.json'
-TOKEN_FILE = 'token.json'
-
-# =============== AUTENTIKASI GOOGLE DRIVE ===============
-def save_token(creds):
-    with open(TOKEN_FILE, 'w') as token:
-        token.write(creds.to_json())
-
-def load_token():
-    if os.path.exists(TOKEN_FILE):
-        creds = Credentials.from_authorized_user_file(TOKEN_FILE, SCOPES)
-        if creds and creds.expired and creds.refresh_token:
-            creds.refresh(Request())
-            save_token(creds)
-        return creds
-    return None
-
-def get_drive_service():
-    creds = load_token()
-    if creds:
-        return build('drive', 'v3', credentials=creds)
-
-    flow = Flow.from_client_secrets_file(
-        CLIENT_SECRET_FILE,
-        scopes=SCOPES,
-        redirect_uri="https://tara-capslock.streamlit.app/"
-    )
-
-    query_params = st.query_params
-    if "code" in query_params:
-        code = query_params["code"]
-        flow.fetch_token(code=code)
-        creds = flow.credentials
-        save_token(creds)
-        st.success("✅ Autentikasi Google berhasil! Klik ulang tombol Simpan.")
-        st.rerun()
-
-    auth_url, _ = flow.authorization_url(
-        prompt='consent', access_type='offline', include_granted_scopes='true'
-    )
-    st.markdown(f"[🔐 Login Google Drive]({auth_url})", unsafe_allow_html=True)
-    st.stop()
-
-# =============== UPLOAD FILE KE DRIVE ===============
-def upload_to_drive(local_path, filename):
-    try:
-        service = get_drive_service()
-        if not service:
-            st.error("❌ Gagal konek ke Google Drive")
-            return
-
-        file_metadata = {'name': filename, 'parents': [GDRIVE_FOLDER_ID]}
-        media = MediaFileUpload(local_path, resumable=True)
-        uploaded = service.files().create(body=file_metadata, media_body=media, fields='id').execute()
-        link = f"https://drive.google.com/drive/folders/{GDRIVE_FOLDER_ID}"
-        st.info(f"✅ File **{filename}** berhasil diupload ke [Google Drive]({link})")
-    except HttpError as error:
-        st.error("❌ Gagal upload ke Google Drive.")
-        st.exception(error)
-    except Exception as e:
-        st.error("❌ Terjadi kesalahan tak terduga.")
-        st.exception(e)
-
-# =============== CONFIG TOKO ===============
+# ------------------- LOAD CONFIG -------------------
 def load_config():
     if os.path.exists(CONFIG_FILE):
         with open(CONFIG_FILE, "r") as f:
@@ -95,110 +19,162 @@ def load_config():
         "telepon": "0851-7217-4759"
     }
 
-# =============== NOMOR NOTA ===============
-def get_next_nota():
-    if not os.path.exists(COUNTER_FILE):
-        with open(COUNTER_FILE, "w") as f:
-            f.write("1")
-        return "TRX/0000001"
-    else:
-        with open(COUNTER_FILE, "r") as f:
-            current = int(f.read().strip() or 0)
-        next_num = current + 1
-        with open(COUNTER_FILE, "w") as f:
-            f.write(str(next_num))
-        return f"TRX/{next_num:07d}"
-
-# =============== DATA SERVIS ===============
+# ------------------- DATA -------------------
 def load_data():
     if os.path.exists(DATA_FILE):
-        return pd.read_csv(DATA_FILE)
+        df = pd.read_csv(DATA_FILE)
+        # Pastikan kolom Harga Modal ada
+        if "Harga Modal" not in df.columns:
+            df["Harga Modal"] = ""
+        return df
     return pd.DataFrame(columns=[
         "No Nota", "Tanggal Masuk", "Estimasi Selesai", "Nama Pelanggan", "No HP",
-        "Barang", "Kerusakan", "Kelengkapan", "Status", "Harga Jasa"
+        "Barang", "Kerusakan", "Kelengkapan", "Status", "Harga Jasa", "Harga Modal"
     ])
 
 def save_data(df):
     df.to_csv(DATA_FILE, index=False)
-    # upload ke drive juga
-    upload_to_drive(DATA_FILE, "service_data.csv")
-    upload_to_drive(COUNTER_FILE, "nota_counter.txt")
 
-# =============== UI FORM SERVIS ===============
+# ------------------- PAGE -------------------
 def show():
     cfg = load_config()
-    st.title("🧾 Servis Baru")
+    st.title("📊 Laporan Servis")
 
-    with st.form("form_service"):
-        tanggal_masuk_manual = st.date_input("Tanggal Masuk", value=datetime.date.today())
-        nama = st.text_input("Nama Pelanggan")
-        no_hp = st.text_input("Nomor WhatsApp", placeholder="6281234567890 (tanpa +)")
-        barang = st.text_input("Nama Barang", placeholder="Laptop ASUS A409")
-        kerusakan = st.text_area("Detail Kerusakan", placeholder="Tidak bisa booting")
-        kelengkapan = st.text_area("Kelengkapan", placeholder="Charger, Tas")
-        estimasi = st.date_input("Estimasi Selesai", value=datetime.date.today() + datetime.timedelta(days=3))
-        submitted = st.form_submit_button("💾 Simpan Servis")
+    df = load_data()
+    if df.empty:
+        st.info("Belum ada data servis.")
+        return
 
-    if submitted:
-        if not all([nama, no_hp, barang]):
-            st.error("Nama, Nomor HP, dan Barang wajib diisi!")
-            return
+    # Konversi tanggal masuk
+    try:
+        df["Tanggal Masuk"] = pd.to_datetime(df["Tanggal Masuk"], errors="coerce")
+    except:
+        pass
 
-        df = load_data()
-        nota = get_next_nota()
-        now = datetime.datetime.now()
-        tanggal_masuk_fmt = datetime.datetime.combine(tanggal_masuk_manual, now.time()).strftime("%d/%m/%Y - %H:%M")
-        estimasi_selesai_fmt = datetime.datetime.combine(estimasi, now.time()).strftime("%d/%m/%Y - %H:%M")
+    # ------------------- FILTER BULAN -------------------
+    st.sidebar.header("📅 Filter Laporan per Bulan")
+    bulan_unik = sorted(df["Tanggal Masuk"].dropna().dt.to_period("M").unique())
 
-        new = pd.DataFrame([{
-            "No Nota": nota,
-            "Tanggal Masuk": tanggal_masuk_fmt,
-            "Estimasi Selesai": estimasi_selesai_fmt,
-            "Nama Pelanggan": nama,
-            "No HP": no_hp,
-            "Barang": barang,
-            "Kerusakan": kerusakan,
-            "Kelengkapan": kelengkapan,
-            "Status": "Cek Dulu",
-            "Harga Jasa": ""
-        }])
+    if len(bulan_unik) > 0:
+        pilih_bulan = st.sidebar.selectbox(
+            "Pilih Bulan:",
+            options=["Semua Bulan"] + [str(b) for b in bulan_unik],
+            index=0
+        )
+        if pilih_bulan != "Semua Bulan":
+            df = df[df["Tanggal Masuk"].dt.to_period("M") == pd.Period(pilih_bulan)]
+    else:
+        st.sidebar.info("Belum ada data untuk difilter.")
 
-        df = pd.concat([df, new], ignore_index=True)
-        save_data(df)
+    # ------------------- HITUNG REKAP -------------------
+    def parse_rupiah(s):
+        try:
+            return int(str(s).replace("Rp", "").replace(".", "").strip())
+        except:
+            return 0
 
-        # WhatsApp message
-        msg = f"""NOTA ELEKTRONIK
+    total_jasa = df["Harga Jasa"].apply(parse_rupiah).sum()
+    total_modal = df["Harga Modal"].apply(parse_rupiah).sum()
+    total_untung = total_jasa - total_modal
 
-💻 *{cfg['nama_toko']}* 💻
-{cfg['alamat']}
-HP : {cfg['telepon']}
+    col1, col2, col3 = st.columns(3)
+    col1.metric("💰 Total Modal", f"Rp {total_modal:,}".replace(",", "."))
+    col2.metric("💵 Total Jasa", f"Rp {total_jasa:,}".replace(",", "."))
+    col3.metric("📈 Total Untung", f"Rp {total_untung:,}".replace(",", "."))
 
-=======================
-*No Nota* : {nota}
-*Pelanggan* : {nama}
+    # ------------------- TAMPIL DATA -------------------
+    st.dataframe(df, use_container_width=True)
+    st.divider()
+    st.subheader("📱 Klik Pelanggan Untuk Kirim WA Otomatis")
 
-*Tanggal Masuk* : {tanggal_masuk_fmt}
-*Estimasi Selesai* : {estimasi_selesai_fmt}
-=======================
-{barang}
-{kerusakan}
-{kelengkapan}
-=======================
-*Harga* : (Cek Dulu)
-*Status* : Cek Dulu
-Dapatkan Promo Mahasiswa
-=======================
+    for i, row in df.iterrows():
+        with st.expander(f"{row['Nama Pelanggan']} - {row['Barang']} ({row['Status']})"):
+            # Input harga modal
+            modal_input = st.text_input(
+                "Harga Modal (tidak dikirim ke WA)",
+                value=str(row["Harga Modal"]).replace("Rp ", "").replace(".", "") if pd.notna(row["Harga Modal"]) else "",
+                key=f"modal_{i}"
+            )
 
-Best Regard
-Admin {cfg['nama_toko']}
-Terima Kasih 🙏"""
+            # Input harga jasa
+            harga_input = st.text_input(
+                "Harga Jasa (akan dikirim ke WA)",
+                value=str(row["Harga Jasa"]).replace("Rp ", "").replace(".", "") if pd.notna(row["Harga Jasa"]) else "",
+                key=f"harga_{i}"
+            )
 
-        no_hp = str(no_hp).replace("+", "").replace(" ", "").strip()
-        link = f"https://wa.me/{no_hp}?text={requests.utils.quote(msg)}"
+            if harga_input.strip():
+                # Format harga jasa
+                try:
+                    harga_num = int(harga_input.replace("Rp", "").replace(".", "").replace(",", "").strip())
+                    harga_baru = f"Rp {harga_num:,}".replace(",", ".")
+                except:
+                    harga_baru = harga_input
 
-        st.success(f"✅ Servis {barang} berhasil disimpan dan diupload ke Google Drive!")
-        st.markdown(f"[📲 KIRIM NOTA SERVIS VIA WHATSAPP]({link})", unsafe_allow_html=True)
+                # Format harga modal
+                try:
+                    if modal_input.strip():
+                        modal_num = int(modal_input.replace("Rp", "").replace(".", "").replace(",", "").strip())
+                        modal_baru = f"Rp {modal_num:,}".replace(",", ".")
+                    else:
+                        modal_baru = ""
+                except:
+                    modal_baru = modal_input
 
+                # Update CSV
+                df.at[i, "Status"] = "Lunas"
+                df.at[i, "Harga Jasa"] = harga_baru
+                df.at[i, "Harga Modal"] = modal_baru
+                save_data(df)
 
-# =============== RUN PAGE ===============
-show()
+                # Buat pesan WA
+                msg = f"""Assalamualaikum {row['Nama Pelanggan']},
+
+Unit anda dengan nomor nota *{row['No Nota']}* sudah selesai dan siap untuk diambil.
+
+Total Biaya Servis: *{harga_baru}*
+
+Terima Kasih 🙏
+{cfg['nama_toko']}"""
+
+                # Format nomor HP
+                no_hp = str(row["No HP"]).replace("+", "").replace(" ", "").strip()
+                if no_hp.startswith("0"):
+                    no_hp = "62" + no_hp[1:]
+
+                link = f"https://wa.me/{no_hp}?text={requests.utils.quote(msg)}"
+
+                st.success(f"✅ Servis {row['Barang']} ditandai lunas & membuka WhatsApp...")
+                st.markdown(f"[📲 Buka WhatsApp]({link})", unsafe_allow_html=True)
+
+                # 🔥 Buka otomatis WA di tab baru
+                js = f"""
+                <script>
+                    setTimeout(function(){{
+                        window.open("{link}", "_blank");
+                    }}, 800);
+                </script>
+                """
+                st.markdown(js, unsafe_allow_html=True)
+                st.stop()
+
+            st.info("Harga modal hanya untuk laporan internal — tidak dikirim ke WA pelanggan.")
+
+    # ------------------- HAPUS MASSAL -------------------
+    st.divider()
+    st.subheader("🗑️ Hapus Beberapa Data Sekaligus")
+
+    pilih = st.multiselect(
+        "Pilih servis untuk dihapus:",
+        df.index,
+        format_func=lambda x: f"{df.loc[x, 'Nama Pelanggan']} - {df.loc[x, 'Barang']}"
+    )
+
+    if st.button("🚮 Hapus Terpilih"):
+        if pilih:
+            df = df.drop(pilih).reset_index(drop=True)
+            save_data(df)
+            st.success("Data terpilih berhasil dihapus.")
+            st.rerun()
+        else:
+            st.warning("Belum ada data yang dipilih.")
