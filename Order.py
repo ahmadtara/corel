@@ -18,7 +18,7 @@ def load_config():
         with open(CONFIG_FILE, "r") as f:
             return json.load(f)
     return {
-        "nama_toko": "*Capslock Komputer*",
+        "nama_toko": "Capslock Komputer",
         "alamat": "Jl. Buluh Cina, Panam",
         "telepon": "085172174759"
     }
