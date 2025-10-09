@@ -85,7 +85,6 @@ def show():
     # ------------------- KONVERSI HARGA AMAN -------------------
     def parse_rp_to_int(x):
         try:
-            # hapus 'Rp', '.', ',' dan spasi
             s = str(x).replace("Rp","").replace(".","").replace(",","").strip()
             return int(s) if s else 0
         except:
@@ -93,19 +92,21 @@ def show():
 
     df["Harga Jasa Num"] = df["Harga Jasa"].apply(parse_rp_to_int)
     df["Harga Modal Num"] = df["Harga Modal"].apply(parse_rp_to_int)
-
     df["Keuntungan"] = df["Harga Jasa Num"] - df["Harga Modal Num"]
 
-    # ------------------- FILTER BULAN -------------------
-    st.sidebar.header("📅 Filter Bulan / Tahun")
-    bulan_unik = df["Tanggal Masuk"].dt.to_period("M").dropna().unique()
-    pilih_bulan = st.sidebar.selectbox(
-        "Pilih Bulan:",
-        options=["Semua Bulan"] + [str(b) for b in bulan_unik],
-        index=0
+    # ------------------- FILTER TANGGAL -------------------
+    st.sidebar.header("📅 Filter Tanggal")
+    tanggal_filter = st.sidebar.date_input(
+        "Tampilkan servis pada tanggal:",
+        value=datetime.date.today()
     )
-    if pilih_bulan != "Semua Bulan":
-        df = df[df["Tanggal Masuk"].dt.to_period("M") == pd.Period(pilih_bulan)]
+
+    # Filter data sesuai tanggal terpilih
+    df = df[df["Tanggal Masuk"].dt.date == tanggal_filter]
+
+    if df.empty:
+        st.info(f"Tidak ada servis pada tanggal {tanggal_filter.strftime('%d/%m/%Y')}")
+        return
 
     # ------------------- TAMPIL DATA -------------------
     st.dataframe(df[["No Nota","Tanggal Masuk","Nama Pelanggan","Barang","Status",
@@ -129,13 +130,11 @@ def show():
             )
 
             if st.button("✅ Update & Kirim WA", key=f"btn_{i}"):
-                # Update harga modal
                 try:
                     harga_modal_num = int(str(harga_modal_input).replace(".","").strip())
                 except:
                     harga_modal_num = 0
 
-                # Update harga jasa
                 try:
                     harga_jasa_num = int(str(harga_jasa_input).replace(".","").strip())
                 except:
@@ -151,7 +150,6 @@ def show():
 
                 save_data(df)
 
-                # Update ke Firebase
                 firebase_data = {
                     "harga_jasa": harga_jasa_str,
                     "harga_modal": harga_modal_str,
@@ -160,7 +158,6 @@ def show():
                 }
                 update_firebase(row["FirebaseID"], firebase_data)
 
-                # Buat pesan WA
                 msg = f"""Assalamualaikum {row['Nama Pelanggan']},
 
 Unit anda dengan nomor nota *{row['No Nota']}* sudah selesai dan siap untuk diambil.
@@ -202,7 +199,6 @@ Terima Kasih 🙏
 
     if st.button("🚮 Hapus Terpilih"):
         if pilih:
-            # Hapus dari Firebase juga
             for idx in pilih:
                 fid = df.loc[idx, "FirebaseID"]
                 try:
@@ -224,3 +220,4 @@ Terima Kasih 🙏
         file_name="laporan_servis.csv",
         mime="text/csv"
     )
+
