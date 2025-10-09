@@ -15,7 +15,7 @@ with st.sidebar:
         "📱 Capslock Komputer",
         [
             "🧾 Order",
-            "📦 Admin Barang",  # ✅ Tambah menu baru untuk Admin.py
+            "📦 Admin",  # ✅ Tambah menu baru untuk Admin.py
             "📈 Report",
             "⚙️ Setting"
         ],
@@ -32,7 +32,7 @@ with st.sidebar:
 # ---------------------- ROUTING HALAMAN ----------------------
 if selected == "🧾 Order":
     Order.show()
-elif selected == "📦 Admin Barang":  # ✅ Tambah logika baru
+elif selected == "📦 Admin":  # ✅ Tambah logika baru
     Admin.show()
 elif selected == "📈 Report":
     Report.show()
