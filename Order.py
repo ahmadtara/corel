@@ -9,7 +9,7 @@ import json
 DATA_FILE = "service_data.csv"
 CONFIG_FILE = "config.json"
 COUNTER_FILE = "nota_counter.txt"
-FIREBASE_URL = "https://toko-4960c-default-rtdb.asia-southeast1.firebasedatabase.app/"  # <--- pastikan ini benar
+FIREBASE_URL = "https://toko-4960c-default-rtdb.asia-southeast1.firebasedatabase.app/"
 
 
 # ---------------------- CONFIG ----------------------
@@ -88,7 +88,7 @@ def show():
     tab1, tab2 = st.tabs(["🛠️ Servis Baru", "🧰 Transaksi Barang"])
 
     # =============================================
-    # TAB 1 : SERVIS (kode lama kamu utuh)
+    # TAB 1 : SERVIS
     # =============================================
     with tab1:
         with st.form("form_service"):
@@ -128,7 +128,6 @@ def show():
             df = pd.concat([df, new], ignore_index=True)
             save_data(df)
 
-            # --- Simpan ke Firebase ---
             firebase_data = {
                 "no_nota": nota,
                 "tanggal_masuk": tanggal_masuk_str,
@@ -144,7 +143,6 @@ def show():
             }
             save_to_firebase(firebase_data, "servis")
 
-            # --- Format pesan WhatsApp ---
             msg = f"""NOTA ELEKTRONIK
 
 💻 *{cfg['nama_toko']}* 💻
@@ -171,25 +169,18 @@ Best Regard
 Admin {cfg['nama_toko']}
 Terima Kasih 🙏"""
 
-            # --- Normalisasi Nomor WhatsApp ---
             no_hp = str(no_hp).replace(" ", "").replace("-", "").replace("+", "").strip()
-            
-            # Kalau diawali "0", ubah ke "62"
             if no_hp.startswith("0"):
                 no_hp = "62" + no_hp[1:]
             elif not no_hp.startswith("62"):
-                # fallback, kalau user nulis aneh seperti "8123456"
                 no_hp = "62" + no_hp
-            
-            # --- Buat link WhatsApp ---
+
             link = f"https://wa.me/{no_hp}?text={requests.utils.quote(msg)}"
-
-
             st.success(f"✅ Servis {barang} berhasil disimpan dan dikirim ke Firebase!")
             st.markdown(f"[📲 KIRIM NOTA SERVIS VIA WHATSAPP]({link})", unsafe_allow_html=True)
 
     # =============================================
-    # TAB 2 : TRANSAKSI BARANG / ACCESSORIES
+    # TAB 2 : TRANSAKSI BARANG
     # =============================================
     with tab2:
         st.subheader("🧰 Penjualan Accessories / Sparepart")
@@ -202,17 +193,19 @@ Terima Kasih 🙏"""
         nama_barang = st.selectbox("Pilih Barang", stok_df["nama_barang"])
         barang_row = stok_df[stok_df["nama_barang"] == nama_barang].iloc[0]
 
-        modal = barang_row.get("modal", 0)
-        harga_default = barang_row.get("harga_jual", 0)
+        modal = float(barang_row.get("modal", 0))
+        harga_default = float(barang_row.get("harga_jual", 0))
         stok = int(barang_row.get("qty", 0))
 
-        harga_jual = st.number_input("Harga Jual (boleh ubah manual)", value=float(harga_default))
+        harga_jual = st.number_input("Harga Jual (boleh ubah manual)", value=harga_default)
         qty = st.number_input("Jumlah Beli", min_value=1, max_value=stok if stok > 0 else 1)
         nama_pembeli = st.text_input("Nama Pembeli (opsional)")
         tanggal = datetime.date.today()
 
         if st.button("💾 Simpan Transaksi"):
             total = harga_jual * qty
+            untung = (harga_jual - modal) * qty  # tambahkan perhitungan untung
+
             transaksi_data = {
                 "tanggal": tanggal.strftime("%d/%m/%Y"),
                 "nama_barang": nama_barang,
@@ -220,23 +213,23 @@ Terima Kasih 🙏"""
                 "harga_jual": harga_jual,
                 "qty": qty,
                 "total": total,
+                "untung": untung,   # kolom baru
                 "pembeli": nama_pembeli,
                 "timestamp": datetime.datetime.now().isoformat()
             }
 
             if save_to_firebase(transaksi_data, "transaksi"):
-                # Kurangi stok barang
                 stok_baru = stok - qty
-                barang_id = stok_df[stok_df["nama_barang"] == nama_barang].index[0]
                 try:
                     key_response = requests.get(f"{FIREBASE_URL}/stok_barang.json")
                     if key_response.status_code == 200:
                         all_data = key_response.json()
                         for key, val in all_data.items():
                             if val.get("nama_barang") == nama_barang:
-                                update_data = {"qty": stok_baru}
-                                requests.patch(f"{FIREBASE_URL}/stok_barang/{key}.json", json=update_data)
+                                requests.patch(f"{FIREBASE_URL}/stok_barang/{key}.json", json={"qty": stok_baru})
                                 break
                 except Exception as e:
                     st.warning(f"Gagal update stok barang: {e}")
+
+                st.success(f"✅ Transaksi {nama_barang} berhasil disimpan! Untung: Rp {untung:,.0f}".replace(",", "."))
 
