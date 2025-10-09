@@ -79,47 +79,34 @@ def show():
         return
 
     df["Tanggal Masuk"] = pd.to_datetime(df["Tanggal Masuk"], errors="coerce")
-
-    def parse_rp_to_int(x):
-        try:
-            s = str(x).replace("Rp","").replace(".","").replace(",","").strip()
-            return int(s) if s else 0
-        except:
-            return 0
-
     df["Harga Jasa Num"] = df["Harga Jasa"].apply(parse_rp_to_int)
     df["Harga Modal Num"] = df["Harga Modal"].apply(parse_rp_to_int)
     df["Keuntungan"] = df["Harga Jasa Num"] - df["Harga Modal Num"]
 
-    # ------------------- FILTER -------------------
+    # ------------------- FILTER COMBO -------------------
     st.sidebar.header("📅 Filter Servis")
-    filter_mode = st.sidebar.radio(
-        "Pilih mode filter:",
-        options=["Per Hari", "Per Bulan"],
-        index=0
-    )
+    filter_mode = st.sidebar.radio("Pilih mode filter:", ["Per Hari", "Per Bulan"], index=0)
 
     if filter_mode == "Per Hari":
-        tanggal_filter = st.sidebar.date_input(
-            "Pilih Tanggal:",
-            value=datetime.date.today()
-        )
+        tanggal_filter = st.sidebar.date_input("Pilih Tanggal:", value=datetime.date.today())
         df_filtered = df[df["Tanggal Masuk"].dt.date == tanggal_filter]
     else:
         bulan_unik = df["Tanggal Masuk"].dt.to_period("M").dropna().unique()
         pilih_bulan = st.sidebar.selectbox(
-            "Pilih Bulan:",
-            options=["Semua Bulan"] + [str(b) for b in bulan_unik],
-            index=0
+            "Pilih Bulan:", options=["Semua Bulan"] + [str(b) for b in bulan_unik], index=0
         )
         if pilih_bulan != "Semua Bulan":
             df_filtered = df[df["Tanggal Masuk"].dt.to_period("M") == pd.Period(pilih_bulan)]
         else:
             df_filtered = df.copy()
 
+    # --- jika tidak ada data untuk filter ---
     if df_filtered.empty:
         st.info("Tidak ada data servis untuk filter yang dipilih.")
         return
+
+    # Lanjut tampilkan tabel, WA, hapus massal, download CSV seperti sebelumnya
+
 
     # ------------------- TAMPIL DATA -------------------
     st.dataframe(df_filtered[["No Nota","Tanggal Masuk","Nama Pelanggan","Barang","Status",
