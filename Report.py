@@ -29,7 +29,7 @@ def load_data():
             rows = []
             for key, val in data.items():
                 row = {
-                    "FirebaseID": key,  # simpan key untuk update Firebase
+                    "FirebaseID": key,
                     "No Nota": val.get("no_nota",""),
                     "Tanggal Masuk": val.get("tanggal_masuk",""),
                     "Estimasi Selesai": val.get("estimasi_selesai",""),
@@ -49,7 +49,6 @@ def load_data():
     except Exception as e:
         st.warning(f"Gagal ambil data dari Firebase: {e}")
 
-    # fallback ke CSV lokal
     if os.path.exists(DATA_FILE):
         return pd.read_csv(DATA_FILE)
     return pd.DataFrame(columns=[
@@ -79,10 +78,8 @@ def show():
         st.info("Belum ada data servis.")
         return
 
-    # ------------------- KONVERSI TANGGAL -------------------
     df["Tanggal Masuk"] = pd.to_datetime(df["Tanggal Masuk"], errors="coerce")
 
-    # ------------------- KONVERSI HARGA AMAN -------------------
     def parse_rp_to_int(x):
         try:
             s = str(x).replace("Rp","").replace(".","").replace(",","").strip()
@@ -94,27 +91,43 @@ def show():
     df["Harga Modal Num"] = df["Harga Modal"].apply(parse_rp_to_int)
     df["Keuntungan"] = df["Harga Jasa Num"] - df["Harga Modal Num"]
 
-    # ------------------- FILTER TANGGAL -------------------
-    st.sidebar.header("📅 Filter Tanggal")
-    tanggal_filter = st.sidebar.date_input(
-        "Tampilkan servis pada tanggal:",
-        value=datetime.date.today()
+    # ------------------- FILTER -------------------
+    st.sidebar.header("📅 Filter Servis")
+    filter_mode = st.sidebar.radio(
+        "Pilih mode filter:",
+        options=["Per Hari", "Per Bulan"],
+        index=0
     )
 
-    # Filter data sesuai tanggal terpilih
-    df = df[df["Tanggal Masuk"].dt.date == tanggal_filter]
+    if filter_mode == "Per Hari":
+        tanggal_filter = st.sidebar.date_input(
+            "Pilih Tanggal:",
+            value=datetime.date.today()
+        )
+        df_filtered = df[df["Tanggal Masuk"].dt.date == tanggal_filter]
+    else:
+        bulan_unik = df["Tanggal Masuk"].dt.to_period("M").dropna().unique()
+        pilih_bulan = st.sidebar.selectbox(
+            "Pilih Bulan:",
+            options=["Semua Bulan"] + [str(b) for b in bulan_unik],
+            index=0
+        )
+        if pilih_bulan != "Semua Bulan":
+            df_filtered = df[df["Tanggal Masuk"].dt.to_period("M") == pd.Period(pilih_bulan)]
+        else:
+            df_filtered = df.copy()
 
-    if df.empty:
-        st.info(f"Tidak ada servis pada tanggal {tanggal_filter.strftime('%d/%m/%Y')}")
+    if df_filtered.empty:
+        st.info("Tidak ada data servis untuk filter yang dipilih.")
         return
 
     # ------------------- TAMPIL DATA -------------------
-    st.dataframe(df[["No Nota","Tanggal Masuk","Nama Pelanggan","Barang","Status",
-                     "Harga Modal","Harga Jasa","Keuntungan"]], use_container_width=True)
+    st.dataframe(df_filtered[["No Nota","Tanggal Masuk","Nama Pelanggan","Barang","Status",
+                              "Harga Modal","Harga Jasa","Keuntungan"]], use_container_width=True)
     st.divider()
     st.subheader("📱 Klik Pelanggan Untuk Kirim WA Otomatis")
 
-    for i, row in df.iterrows():
+    for i, row in df_filtered.iterrows():
         with st.expander(f"{row['Nama Pelanggan']} - {row['Barang']} ({row['Status']})"):
 
             harga_jasa_input = st.text_input(
@@ -122,7 +135,6 @@ def show():
                 value=str(row["Harga Jasa Num"]) if row["Harga Jasa Num"] else "",
                 key=f"harga_{i}"
             )
-
             harga_modal_input = st.text_input(
                 "Masukkan Harga Modal (Rp) - tidak dikirim ke WA",
                 value=str(row["Harga Modal Num"]) if row["Harga Modal Num"] else "",
@@ -147,7 +159,6 @@ def show():
                 df.at[i,"Harga Modal"] = harga_modal_str
                 df.at[i,"Status"] = "Lunas"
                 df.at[i,"Keuntungan"] = harga_jasa_num - harga_modal_num
-
                 save_data(df)
 
                 firebase_data = {
@@ -172,7 +183,6 @@ Terima Kasih 🙏
                     no_hp = "62" + no_hp[1:]
 
                 link = f"https://wa.me/{no_hp}?text={requests.utils.quote(msg)}"
-
                 st.success(f"✅ Servis {row['Barang']} ditandai lunas & membuka WhatsApp...")
                 st.markdown(f"[📲 Buka WhatsApp]({link})", unsafe_allow_html=True)
 
@@ -193,14 +203,14 @@ Terima Kasih 🙏
     st.subheader("🗑️ Hapus Beberapa Data Sekaligus")
     pilih = st.multiselect(
         "Pilih servis untuk dihapus:",
-        df.index,
-        format_func=lambda x: f"{df.loc[x, 'Nama Pelanggan']} - {df.loc[x, 'Barang']}"
+        df_filtered.index,
+        format_func=lambda x: f"{df_filtered.loc[x, 'Nama Pelanggan']} - {df_filtered.loc[x, 'Barang']}"
     )
 
     if st.button("🚮 Hapus Terpilih"):
         if pilih:
             for idx in pilih:
-                fid = df.loc[idx, "FirebaseID"]
+                fid = df_filtered.loc[idx, "FirebaseID"]
                 try:
                     requests.delete(f"{FIREBASE_URL}/servis/{fid}.json")
                 except:
@@ -216,8 +226,7 @@ Terima Kasih 🙏
     st.divider()
     st.download_button(
         label="⬇️ Download CSV Laporan",
-        data=df.to_csv(index=False).encode('utf-8'),
+        data=df_filtered.to_csv(index=False).encode('utf-8'),
         file_name="laporan_servis.csv",
         mime="text/csv"
     )
-
