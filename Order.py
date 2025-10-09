@@ -225,6 +225,18 @@ Terima Kasih 🙏"""
             }
 
             if save_to_firebase(transaksi_data, "transaksi"):
-                st.success(f"✅ Transaksi {nama_barang} berhasil disimpan ke Firebase (Total: Rp{total:,.0f})")
-            else:
-                st.error("Gagal menyimpan transaksi ke Firebase.")
+                # Kurangi stok barang
+                stok_baru = stok - qty
+                barang_id = stok_df[stok_df["nama_barang"] == nama_barang].index[0]
+                try:
+                    key_response = requests.get(f"{FIREBASE_URL}/stok_barang.json")
+                    if key_response.status_code == 200:
+                        all_data = key_response.json()
+                        for key, val in all_data.items():
+                            if val.get("nama_barang") == nama_barang:
+                                update_data = {"qty": stok_baru}
+                                requests.patch(f"{FIREBASE_URL}/stok_barang/{key}.json", json=update_data)
+                                break
+                except Exception as e:
+                    st.warning(f"Gagal update stok barang: {e}")
+
