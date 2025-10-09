@@ -80,8 +80,10 @@ def show():
         return
 
     # ------------------- KONVERSI TANGGAL -------------------
-    df["Tanggal Masuk"] = pd.to_datetime(df["Tanggal Masuk"], errors="coerce").dt.date
-    df = df.dropna(subset=["Tanggal Masuk"])  # pastikan tidak ada NaT
+    # Gunakan format sesuai Order.py
+    df["Tanggal Masuk"] = pd.to_datetime(df["Tanggal Masuk"], format="%d/%m/%Y", errors="coerce").dt.date
+    df = df.dropna(subset=["Tanggal Masuk"])  # hapus baris yang gagal konversi
+
 
     # ------------------- FUNSI HARGA AMAN -------------------
     def parse_rp_to_int(x):
