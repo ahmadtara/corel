@@ -20,7 +20,7 @@ def load_config():
         "telepon": "0851-7217-4759"
     }
 
-# ------------------- DATA -------------------
+# ------------------- DATA SERVIS -------------------
 def load_data():
     try:
         r = requests.get(f"{FIREBASE_URL}/servis.json")
@@ -59,6 +59,21 @@ def load_data():
 def save_data(df):
     df.to_csv(DATA_FILE, index=False)
 
+# ------------------- DATA BARANG -------------------
+def load_data_barang():
+    try:
+        r = requests.get(f"{FIREBASE_URL}/stok_barang.json")
+        if r.status_code == 200 and r.text != "null":
+            data = r.json()
+            df = pd.DataFrame.from_dict(data, orient="index").reset_index(names="FirebaseID")
+            for col in ["nama_barang","modal","harga_jual","qty"]:
+                if col not in df.columns:
+                    df[col] = ""
+            return df
+    except Exception as e:
+        st.warning(f"Gagal ambil data stok_barang: {e}")
+    return pd.DataFrame(columns=["FirebaseID","nama_barang","modal","harga_jual","qty"])
+
 # ------------------- UPDATE FIREBASE -------------------
 def update_firebase(firebase_id, data):
     try:
@@ -68,10 +83,12 @@ def update_firebase(firebase_id, data):
     except Exception as e:
         st.error(f"Error update Firebase: {e}")
 
-# ------------------- HALAMAN REPORT -------------------
+# =========================================================
+#                        HALAMAN REPORT
+# =========================================================
 def show():
     cfg = load_config()
-    st.title("📊 Laporan Servis")
+    st.title("📊 Laporan Servis & Barang")
 
     # ------------------- LOAD DATA -------------------
     df = load_data()
@@ -80,12 +97,10 @@ def show():
         return
 
     # ------------------- KONVERSI TANGGAL -------------------
-    # Gunakan format sesuai Order.py
     df["Tanggal Masuk"] = pd.to_datetime(df["Tanggal Masuk"], format="%d/%m/%Y", errors="coerce").dt.date
-    df = df.dropna(subset=["Tanggal Masuk"])  # hapus baris yang gagal konversi
+    df = df.dropna(subset=["Tanggal Masuk"])
 
-
-    # ------------------- FUNSI HARGA AMAN -------------------
+    # ------------------- PARSE HARGA -------------------
     def parse_rp_to_int(x):
         try:
             s = str(x).replace("Rp","").replace(".","").replace(",","").strip()
@@ -113,24 +128,48 @@ def show():
         )
         if pilih_bulan != "Semua Bulan":
             pilih_bulan_date = pd.to_datetime(pilih_bulan).date()
-            df_filtered = df[df["Tanggal Masuk"].apply(lambda x: x.year == pilih_bulan_date.year and x.month == pilih_bulan_date.month)]
+            df_filtered = df[df["Tanggal Masuk"].apply(
+                lambda x: x.year == pilih_bulan_date.year and x.month == pilih_bulan_date.month)]
         else:
             df_filtered = df.copy()
 
+    # ------------------- REKAP KEUNTUNGAN -------------------
+    total_servis = df_filtered["Keuntungan"].sum()
+
+    # Data barang
+    df_barang = load_data_barang()
+    if not df_barang.empty:
+        df_barang["modal"] = pd.to_numeric(df_barang["modal"], errors="coerce").fillna(0)
+        df_barang["harga_jual"] = pd.to_numeric(df_barang["harga_jual"], errors="coerce").fillna(0)
+        df_barang["qty"] = pd.to_numeric(df_barang["qty"], errors="coerce").fillna(0)
+        df_barang["Potensi Laba"] = (df_barang["harga_jual"] - df_barang["modal"]) * df_barang["qty"]
+        total_barang = df_barang["Potensi Laba"].sum()
+    else:
+        total_barang = 0
+
+    # ------------------- TAMPILKAN TOTAL DI ATAS -------------------
+    col1, col2, col3 = st.columns(3)
+    col1.metric("💰 Total Keuntungan Servis", f"Rp {total_servis:,.0f}".replace(",", "."))
+    col2.metric("📦 Potensi Laba Barang", f"Rp {total_barang:,.0f}".replace(",", "."))
+    col3.metric("📊 Total Gabungan", f"Rp {(total_servis + total_barang):,.0f}".replace(",", "."))
+
+    st.divider()
+
+    # ------------------- TABEL SERVIS -------------------
     if df_filtered.empty:
         st.info("Tidak ada data servis untuk filter yang dipilih.")
         return
 
-    # ------------------- TAMPIL DATA -------------------
     st.dataframe(
         df_filtered[["No Nota","Tanggal Masuk","Nama Pelanggan","Barang","Status",
                      "Harga Modal","Harga Jasa","Keuntungan"]],
         use_container_width=True
     )
+
+    # ------------------- LOOP WA -------------------
     st.divider()
     st.subheader("📱 Klik Pelanggan Untuk Kirim WA Otomatis")
 
-    # ------------------- LOOP WA -------------------
     for i, row in df_filtered.iterrows():
         with st.expander(f"{row['Nama Pelanggan']} - {row['Barang']} ({row['Status']})"):
 
@@ -150,7 +189,6 @@ def show():
                     harga_modal_num = int(str(harga_modal_input).replace(".","").strip())
                 except:
                     harga_modal_num = 0
-
                 try:
                     harga_jasa_num = int(str(harga_jasa_input).replace(".","").strip())
                 except:
@@ -159,14 +197,12 @@ def show():
                 harga_jasa_str = f"Rp {harga_jasa_num:,}".replace(",", ".")
                 harga_modal_str = f"Rp {harga_modal_num:,}".replace(",", ".")
 
-                # Update dataframe lokal
                 df.at[i,"Harga Jasa"] = harga_jasa_str
                 df.at[i,"Harga Modal"] = harga_modal_str
                 df.at[i,"Status"] = "Lunas"
                 df.at[i,"Keuntungan"] = harga_jasa_num - harga_modal_num
                 save_data(df)
 
-                # Update Firebase
                 firebase_data = {
                     "harga_jasa": harga_jasa_str,
                     "harga_modal": harga_modal_str,
@@ -175,7 +211,6 @@ def show():
                 }
                 update_firebase(row["FirebaseID"], firebase_data)
 
-                # Buat pesan WA
                 msg = f"""Assalamualaikum {row['Nama Pelanggan']},
 
 Unit anda dengan nomor nota *{row['No Nota']}* sudah selesai dan siap untuk diambil.
@@ -188,8 +223,8 @@ Terima Kasih 🙏
                 no_hp = str(row["No HP"]).replace("+","").replace(" ","").strip()
                 if no_hp.startswith("0"):
                     no_hp = "62" + no_hp[1:]
-
                 link = f"https://wa.me/{no_hp}?text={requests.utils.quote(msg)}"
+
                 st.success(f"✅ Servis {row['Barang']} ditandai lunas & membuka WhatsApp...")
                 st.markdown(f"[📲 Buka WhatsApp]({link})", unsafe_allow_html=True)
 
@@ -202,8 +237,6 @@ Terima Kasih 🙏
                 """
                 st.markdown(js, unsafe_allow_html=True)
                 st.stop()
-
-            st.info("Isi harga jasa & harga modal untuk update & kirim WA otomatis.")
 
     # ------------------- HAPUS MASSAL -------------------
     st.divider()
