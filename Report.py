@@ -73,17 +73,28 @@ def show():
     cfg = load_config()
     st.title("📊 Laporan Servis")
 
+    # ------------------- LOAD DATA -------------------
     df = load_data()
     if df.empty:
         st.info("Belum ada data servis.")
         return
 
+    # ------------------- KONVERSI TANGGAL -------------------
     df["Tanggal Masuk"] = pd.to_datetime(df["Tanggal Masuk"], errors="coerce")
+
+    # ------------------- FUNSI HARGA AMAN -------------------
+    def parse_rp_to_int(x):
+        try:
+            s = str(x).replace("Rp","").replace(".","").replace(",","").strip()
+            return int(s) if s else 0
+        except:
+            return 0
+
     df["Harga Jasa Num"] = df["Harga Jasa"].apply(parse_rp_to_int)
     df["Harga Modal Num"] = df["Harga Modal"].apply(parse_rp_to_int)
     df["Keuntungan"] = df["Harga Jasa Num"] - df["Harga Modal Num"]
 
-    # ------------------- FILTER COMBO -------------------
+    # ------------------- FILTER PER HARI / BULAN -------------------
     st.sidebar.header("📅 Filter Servis")
     filter_mode = st.sidebar.radio("Pilih mode filter:", ["Per Hari", "Per Bulan"], index=0)
 
@@ -93,27 +104,29 @@ def show():
     else:
         bulan_unik = df["Tanggal Masuk"].dt.to_period("M").dropna().unique()
         pilih_bulan = st.sidebar.selectbox(
-            "Pilih Bulan:", options=["Semua Bulan"] + [str(b) for b in bulan_unik], index=0
+            "Pilih Bulan:",
+            options=["Semua Bulan"] + [str(b) for b in bulan_unik],
+            index=0
         )
         if pilih_bulan != "Semua Bulan":
             df_filtered = df[df["Tanggal Masuk"].dt.to_period("M") == pd.Period(pilih_bulan)]
         else:
             df_filtered = df.copy()
 
-    # --- jika tidak ada data untuk filter ---
     if df_filtered.empty:
         st.info("Tidak ada data servis untuk filter yang dipilih.")
         return
 
-    # Lanjut tampilkan tabel, WA, hapus massal, download CSV seperti sebelumnya
-
-
     # ------------------- TAMPIL DATA -------------------
-    st.dataframe(df_filtered[["No Nota","Tanggal Masuk","Nama Pelanggan","Barang","Status",
-                              "Harga Modal","Harga Jasa","Keuntungan"]], use_container_width=True)
+    st.dataframe(
+        df_filtered[["No Nota","Tanggal Masuk","Nama Pelanggan","Barang","Status",
+                     "Harga Modal","Harga Jasa","Keuntungan"]],
+        use_container_width=True
+    )
     st.divider()
     st.subheader("📱 Klik Pelanggan Untuk Kirim WA Otomatis")
 
+    # ------------------- LOOP WA -------------------
     for i, row in df_filtered.iterrows():
         with st.expander(f"{row['Nama Pelanggan']} - {row['Barang']} ({row['Status']})"):
 
@@ -142,12 +155,14 @@ def show():
                 harga_jasa_str = f"Rp {harga_jasa_num:,}".replace(",", ".")
                 harga_modal_str = f"Rp {harga_modal_num:,}".replace(",", ".")
 
+                # Update dataframe lokal
                 df.at[i,"Harga Jasa"] = harga_jasa_str
                 df.at[i,"Harga Modal"] = harga_modal_str
                 df.at[i,"Status"] = "Lunas"
                 df.at[i,"Keuntungan"] = harga_jasa_num - harga_modal_num
                 save_data(df)
 
+                # Update Firebase
                 firebase_data = {
                     "harga_jasa": harga_jasa_str,
                     "harga_modal": harga_modal_str,
@@ -156,6 +171,7 @@ def show():
                 }
                 update_firebase(row["FirebaseID"], firebase_data)
 
+                # Buat pesan WA
                 msg = f"""Assalamualaikum {row['Nama Pelanggan']},
 
 Unit anda dengan nomor nota *{row['No Nota']}* sudah selesai dan siap untuk diambil.
