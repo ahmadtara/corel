@@ -78,7 +78,7 @@ def show():
         nama = st.text_input("Nama Pelanggan")
         no_hp = st.text_input("Nomor WhatsApp", placeholder="6281234567890 (tanpa +)")
         barang = st.text_input("Nama Barang", placeholder="Laptop ASUS A409")
-        kerusakan = st.text_area("Detail Kerusakan", placeholder="Tidak bisa booting")
+        kerusakan = st.text_area("Detail Kerusakan", placeholder="Tidak bisa booting, Install Ulang")
         kelengkapan = st.text_area("Kelengkapan", placeholder="Charger, Tas")
         submitted = st.form_submit_button("💾 Simpan Servis")
 
