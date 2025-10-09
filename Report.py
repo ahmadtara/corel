@@ -74,6 +74,21 @@ def load_data_barang():
         st.warning(f"Gagal ambil data stok_barang: {e}")
     return pd.DataFrame(columns=["FirebaseID","nama_barang","modal","harga_jual","qty"])
 
+# ------------------- DATA TRANSAKSI -------------------
+def load_data_transaksi():
+    try:
+        r = requests.get(f"{FIREBASE_URL}/transaksi.json")
+        if r.status_code == 200 and r.text != "null":
+            data = r.json()
+            df = pd.DataFrame.from_dict(data, orient="index").reset_index(names="FirebaseID")
+            for col in ["tanggal", "nama_barang", "qty", "harga_jual", "modal", "untung"]:
+                if col not in df.columns:
+                    df[col] = ""
+            return df
+    except Exception as e:
+        st.warning(f"Gagal ambil data transaksi: {e}")
+    return pd.DataFrame(columns=["FirebaseID", "tanggal", "nama_barang", "qty", "harga_jual", "modal", "untung"])
+
 # ------------------- UPDATE FIREBASE -------------------
 def update_firebase(firebase_id, data):
     try:
@@ -143,7 +158,23 @@ def show():
         df_barang["harga_jual"] = pd.to_numeric(df_barang["harga_jual"], errors="coerce").fillna(0)
         df_barang["qty"] = pd.to_numeric(df_barang["qty"], errors="coerce").fillna(0)
         df_barang["Potensi Laba"] = (df_barang["harga_jual"] - df_barang["modal"]) * df_barang["qty"]
-        total_barang = df_barang["Potensi Laba"].sum()
+        # Load transaksi yang sebenarnya
+        df_transaksi = load_data_transaksi()
+        if not df_transaksi.empty:
+            df_transaksi["tanggal"] = pd.to_datetime(df_transaksi["tanggal"], errors="coerce").dt.date
+        
+            if filter_mode == "Per Hari":
+                df_transaksi_filtered = df_transaksi[df_transaksi["tanggal"] == tanggal_filter]
+            else:
+                if pilih_bulan != "Semua Bulan":
+                    df_transaksi_filtered = df_transaksi[df_transaksi["tanggal"].apply(
+                        lambda x: x.year == pilih_bulan_date.year and x.month == pilih_bulan_date.month)]
+                else:
+                    df_transaksi_filtered = df_transaksi.copy()
+        
+            total_barang = df_transaksi_filtered["untung"].sum()
+        else:
+            total_barang = 0
     else:
         total_barang = 0
 
