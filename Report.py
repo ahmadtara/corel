@@ -80,7 +80,8 @@ def show():
         return
 
     # ------------------- KONVERSI TANGGAL -------------------
-    df["Tanggal Masuk"] = pd.to_datetime(df["Tanggal Masuk"], errors="coerce")
+    df["Tanggal Masuk"] = pd.to_datetime(df["Tanggal Masuk"], errors="coerce").dt.date
+    df = df.dropna(subset=["Tanggal Masuk"])  # pastikan tidak ada NaT
 
     # ------------------- FUNSI HARGA AMAN -------------------
     def parse_rp_to_int(x):
@@ -100,16 +101,17 @@ def show():
 
     if filter_mode == "Per Hari":
         tanggal_filter = st.sidebar.date_input("Pilih Tanggal:", value=datetime.date.today())
-        df_filtered = df[df["Tanggal Masuk"].dt.date == tanggal_filter]
+        df_filtered = df[df["Tanggal Masuk"] == tanggal_filter]
     else:
-        bulan_unik = df["Tanggal Masuk"].dt.to_period("M").dropna().unique()
+        bulan_unik = df["Tanggal Masuk"].apply(lambda x: x.replace(day=1)).dropna().unique()
         pilih_bulan = st.sidebar.selectbox(
             "Pilih Bulan:",
             options=["Semua Bulan"] + [str(b) for b in bulan_unik],
             index=0
         )
         if pilih_bulan != "Semua Bulan":
-            df_filtered = df[df["Tanggal Masuk"].dt.to_period("M") == pd.Period(pilih_bulan)]
+            pilih_bulan_date = pd.to_datetime(pilih_bulan).date()
+            df_filtered = df[df["Tanggal Masuk"].apply(lambda x: x.year == pilih_bulan_date.year and x.month == pilih_bulan_date.month)]
         else:
             df_filtered = df.copy()
 
