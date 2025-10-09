@@ -94,8 +94,8 @@ def show():
         with st.form("form_service"):
             tanggal_masuk = st.date_input("Tanggal Masuk", value=datetime.date.today())
             estimasi = st.date_input("Estimasi Selesai", value=datetime.date.today() + datetime.timedelta(days=3))
-            nama = st.text_input("Nama Pelanggan")
-            no_hp = st.text_input("Nomor WhatsApp", placeholder="6281234567890 (tanpa +)")
+            nama = st.text_input("Nama Pelanggan", placeholder="King Dion")
+            no_hp = st.text_input("Nomor WhatsApp", placeholder="081234567890")
             barang = st.text_input("Nama Barang", placeholder="Laptop ASUS A409")
             kerusakan = st.text_area("Detail Kerusakan", placeholder="Tidak bisa booting, Install Ulang")
             kelengkapan = st.text_area("Kelengkapan", placeholder="Charger, Tas")
@@ -171,8 +171,19 @@ Best Regard
 Admin {cfg['nama_toko']}
 Terima Kasih 🙏"""
 
-            no_hp = str(no_hp).replace("+", "").replace(" ", "").strip()
+            # --- Normalisasi Nomor WhatsApp ---
+            no_hp = str(no_hp).replace(" ", "").replace("-", "").replace("+", "").strip()
+            
+            # Kalau diawali "0", ubah ke "62"
+            if no_hp.startswith("0"):
+                no_hp = "62" + no_hp[1:]
+            elif not no_hp.startswith("62"):
+                # fallback, kalau user nulis aneh seperti "8123456"
+                no_hp = "62" + no_hp
+            
+            # --- Buat link WhatsApp ---
             link = f"https://wa.me/{no_hp}?text={requests.utils.quote(msg)}"
+
 
             st.success(f"✅ Servis {barang} berhasil disimpan dan dikirim ke Firebase!")
             st.markdown(f"[📲 KIRIM NOTA SERVIS VIA WHATSAPP]({link})", unsafe_allow_html=True)
