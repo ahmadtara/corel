@@ -1,4 +1,4 @@
-# =================== REPORT.PY (v5.7 WA Expand Dark UI) ===================
+# =================== REPORT.PY (v5.6 FINAL FIX FILTER PER HARI + BULAN LENGKAP) ===================
 import streamlit as st
 import pandas as pd
 import datetime
@@ -285,112 +285,31 @@ def show():
     else:
         st.info("Tidak ada data servis untuk periode ini.")
 
-    # ========== WA OTOMATIS (EXPAND PER PELANGGAN; SEMUA TERTUTUP AWAL) ==========
+    # ========== WA OTOMATIS ==========
     st.divider()
     st.subheader("📱 Klik Pelanggan Untuk Input Harga & Kirim WA Otomatis")
-
-    # CSS kecil untuk memoles tampilan isi expander
-    st.markdown("""
-    <style>
-    .wa-row { margin-bottom: 12px; }
-    .wa-label { font-weight:600; margin-bottom:6px; color:#e6eef8; }
-    .wa-small { color:#cbd5e1; font-size:0.9rem; margin-bottom:6px; }
-    .btn-wa {
-        background: linear-gradient(90deg, #22c55e, #16a34a);
-        color: white !important;
-        text-align: center;
-        display: inline-block;
-        padding: 8px 16px;
-        border-radius: 8px;
-        font-weight: 600;
-        text-decoration: none;
-        transition: 0.2s;
-    }
-    .btn-wa:hover { opacity: 0.9; transform: scale(1.03); }
-    .status-badge { padding: 4px 8px; border-radius:6px; font-weight:600; font-size:0.85rem; }
-    .status-lunas { background:#16a34a; color:white; }
-    .status-proses { background:#3b82f6; color:white; }
-    .status-menunggu { background:#facc15; color:#042; }
-    .status-lain { background:#94a3b8; color:white; }
-    .card-frame { background: linear-gradient(135deg, #0f1724 0%, #121827 100%); padding:12px; border-radius:10px; border:1px solid rgba(255,255,255,0.04); box-shadow:0 2px 6px rgba(2,6,23,0.6); }
-    </style>
-    """, unsafe_allow_html=True)
-
     if not df_servis_f.empty:
-        # iterate rows and create an expander per customer (closed by default)
         for idx, row in df_servis_f.iterrows():
             nota = row.get("No Nota", "")
-            nama_pelanggan = row.get("Nama Pelanggan", "") or "(Tanpa Nama)"
-            barang = row.get("Barang", "") or ""
+            nama_pelanggan = row.get("Nama Pelanggan", "")
+            barang = row.get("Barang", "")
             no_hp = row.get("No HP", "")
-            status_now = str(row.get("Status", "")).strip()
+            status_now = row.get("Status", "")
 
-            # tentukan status icon/class
-            status_norm = status_now.lower()
-            if "lunas" in status_norm:
-                status_icon = "✅"
-                status_class = "status-lunas"
-            elif "proses" in status_norm:
-                status_icon = "🔧"
-                status_class = "status-proses"
-            elif "menunggu" in status_norm or "belum" in status_norm:
-                status_icon = "🕓"
-                status_class = "status-menunggu"
-            else:
-                status_icon = "❔"
-                status_class = "status-lain"
+            with st.expander(f"{nama_pelanggan} - {barang} ({status_now})"):
+                existing_hj = str(row.get("Harga Jasa","")).replace("Rp","").replace(".","").strip() if pd.notna(row.get("Harga Jasa","")) else ""
+                existing_hm = str(row.get("Harga Modal","")).replace("Rp","").replace(".","").strip() if pd.notna(row.get("Harga Modal","")) else ""
 
-            # safe header text for expander (plain text, not raw HTML)
-            header_text = f"{nama_pelanggan} — {barang} ({status_icon} {status_now})"
+                harga_jasa_input = st.text_input("Masukkan Harga Jasa (Rp):", value=existing_hj, key=f"hj_{nota}")
+                harga_modal_input = st.text_input("Masukkan Harga Modal (Rp) - tidak dikirim ke WA:", value=existing_hm, key=f"hm_{nota}")
 
-            # prepare existing values (clean)
-            existing_hj = str(row.get("Harga Jasa","")).replace("Rp","").replace(".","").strip() if pd.notna(row.get("Harga Jasa","")) else ""
-            existing_hm = str(row.get("Harga Modal","")).replace("Rp","").replace(".","").strip() if pd.notna(row.get("Harga Modal","")) else ""
-
-            # use nota as part of keys but make safe (replace spaces)
-            safe_key = str(nota).replace(" ", "_")
-
-            with st.expander(header_text, expanded=False):
-                # add a styled frame
-                st.markdown(f"<div class='card-frame'>", unsafe_allow_html=True)
-
-                col1, col2 = st.columns([2, 1])
-                with col1:
-                    st.markdown(f"<div class='wa-label'>💰 Harga Jasa (Rp):</div>", unsafe_allow_html=True)
-                    harga_jasa_input = st.text_input("", value=existing_hj, key=f"hj_{safe_key}")
-                with col2:
-                    st.markdown(f"<div class='wa-label'>📦 Harga Modal (Rp):</div>", unsafe_allow_html=True)
-                    harga_modal_input = st.text_input("", value=existing_hm, key=f"hm_{safe_key}")
-
-                st.markdown("<div style='height:8px'></div>", unsafe_allow_html=True)
-
-                # action buttons row
-                c1, c2, c3 = st.columns([1, 1, 2])
-                with c1:
-                    kirim = st.button("✅ Simpan & Kirim WA", key=f"kirim_{safe_key}")
-                with c2:
-                    # optional quick-mark-lunas button: set status only (doesn't send WA)
-                    mark_lunas = st.button("✔️ Tandai Lunas", key=f"mark_{safe_key}")
-                with c3:
-                    # small info
-                    st.markdown(f"<div class='wa-small'>No Nota: <b>{nota}</b></div>", unsafe_allow_html=True)
-
-                if mark_lunas:
-                    updates = {"Status": "Lunas"}
-                    ok_mark = update_sheet_row_by_nota(SHEET_SERVIS, nota, updates)
-                    if ok_mark:
-                        st.success(f"✅ Nota {nota} ditandai Lunas di Google Sheet.")
-                        # refresh hint
-                        st.experimental_rerun()
-
-                if kirim:
-                    # parse numeric values safely
+                if st.button("✅ Simpan & Kirim WA", key=f"kirim_{nota}"):
                     try:
-                        hj_num = int(harga_jasa_input.replace(".","").replace(",","").strip()) if str(harga_jasa_input).strip() else 0
+                        hj_num = int(harga_jasa_input.replace(".","").replace(",","").strip()) if harga_jasa_input.strip() else 0
                     except:
                         hj_num = 0
                     try:
-                        hm_num = int(harga_modal_input.replace(".","").replace(",","").strip()) if str(harga_modal_input).strip() else 0
+                        hm_num = int(harga_modal_input.replace(".","").replace(",","").strip()) if harga_modal_input.strip() else 0
                     except:
                         hm_num = 0
 
@@ -419,26 +338,17 @@ Terima Kasih 🙏
 
                         if no_hp_clean.isdigit() and len(no_hp_clean) >= 10:
                             wa_link = f"https://wa.me/{no_hp_clean}?text={urllib.parse.quote(msg)}"
-                            # show button link styled and also auto-open tab (optional)
-                            st.markdown(f'<a class="btn-wa" href="{wa_link}" target="_blank">📲 Buka WhatsApp</a>', unsafe_allow_html=True)
-
-                            # small JS to open new tab (kept short delay)
+                            st.markdown(f"[📲 Buka WhatsApp]({wa_link})", unsafe_allow_html=True)
                             js = f"""
                             <script>
                                 setTimeout(function(){{
                                     window.open("{wa_link}", "_blank");
-                                }}, 600);
+                                }}, 800);
                             </script>
                             """
                             st.markdown(js, unsafe_allow_html=True)
-
-                            # after sending, optionally rerun to reflect status change
-                            st.experimental_rerun()
                         else:
                             st.warning("⚠️ Nomor HP pelanggan kosong atau tidak valid.")
-                st.markdown("</div>", unsafe_allow_html=True)
-    else:
-        st.info("Tidak ada data servis untuk periode ini.")
 
     # ========== TABEL TRANSAKSI ==========
     st.divider()
@@ -460,7 +370,8 @@ Terima Kasih 🙏
             use_container_width=True
         )
     else:
-        st.info("Tidak ada data pengeluaran untuk periode ini.")
+        st.info("Tidak ada data pengeluaran pada periode ini.")
+
 
     # ========== DOWNLOAD CSV ==========
     st.divider()
