@@ -1,3 +1,4 @@
+# ======================== EXPENSE.PY (v5.7 — Tambah Jenis Transaksi Cash/Transfer) ========================
 import streamlit as st
 import pandas as pd
 import datetime
@@ -8,7 +9,7 @@ import json
 
 # =============== KONFIGURASI ===============
 SPREADSHEET_ID = "1OsnO1xQFniBtEFCvGksR2KKrPt-9idE-w6-poM-wXKU"
-SHEET_PENGELUARAN = "Pengeluaran"  # nama sheet baru
+SHEET_PENGELUARAN = "Pengeluaran"
 CACHE_FILE = "pengeluaran_cache.csv"
 
 # =============== AUTH GOOGLE ===============
@@ -31,7 +32,7 @@ def get_worksheet(sheet_name):
 def load_local_data():
     if os.path.exists(CACHE_FILE):
         return pd.read_csv(CACHE_FILE)
-    return pd.DataFrame(columns=["Tanggal", "Keterangan", "Nominal", "Jenis", "uploaded"])
+    return pd.DataFrame(columns=["Tanggal", "Keterangan", "Nominal", "Jenis", "uploaded", "Jenis Transaksi"])
 
 def save_local_data(df):
     df.to_csv(CACHE_FILE, index=False)
@@ -57,6 +58,10 @@ def sync_local_cache():
 def append_to_sheet(sheet_name, data: dict):
     ws = get_worksheet(sheet_name)
     headers = ws.row_values(1)
+    # Pastikan header Jenis Transaksi selalu ada
+    if "Jenis Transaksi" not in headers:
+        ws.update_cell(1, len(headers)+1, "Jenis Transaksi")
+        headers.append("Jenis Transaksi")
     row = [data.get(h, "") for h in headers]
     ws.append_row(row, value_input_option="USER_ENTERED")
 
@@ -78,6 +83,7 @@ def show():
         keterangan = st.text_input("Keterangan", placeholder="Contoh: Bayar listrik bulan Oktober")
         nominal = st.number_input("Nominal (Rp)", min_value=0.0, format="%.0f")
         jenis = st.selectbox("Jenis Pengeluaran", ["Operasional", "Gaji", "Listrik", "Sewa", "Lainnya"])
+        jenis_transaksi = st.radio("Jenis Transaksi", ["Cash", "Transfer"], horizontal=True)
         submit = st.button("💾 Simpan Pengeluaran")
 
         if submit:
@@ -89,7 +95,8 @@ def show():
                     "Keterangan": keterangan,
                     "Nominal": nominal,
                     "Jenis": jenis,
-                    "uploaded": False
+                    "uploaded": False,
+                    "Jenis Transaksi": jenis_transaksi
                 }
 
                 df = load_local_data()
@@ -125,7 +132,7 @@ def show():
             mask = (df_pengeluaran["Tanggal_dt"] >= pd.to_datetime(start_date)) & (df_pengeluaran["Tanggal_dt"] <= pd.to_datetime(end_date))
             filtered = df_pengeluaran[mask]
 
-            st.dataframe(filtered[["Tanggal", "Keterangan", "Nominal", "Jenis"]])
+            st.dataframe(filtered[["Tanggal", "Keterangan", "Nominal", "Jenis", "Jenis Transaksi"]])
 
             total = filtered["Nominal"].sum()
             st.metric("💰 Total Pengeluaran", f"Rp {total:,.0f}".replace(",", "."))
