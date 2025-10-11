@@ -1,10 +1,11 @@
-# ==================== ADMIN.PY (v2.1 - Notif Telegram Stok Menipis) ====================
+# ==================== ADMIN.PY (v2.4 - Notif Telegram Harian) ====================
 import streamlit as st
 import pandas as pd
 import gspread
 from oauth2client.service_account import ServiceAccountCredentials
 import os
-import requests  # <--- untuk kirim pesan ke Telegram
+import requests
+import datetime
 
 # ==================== KONFIG =====================
 SPREADSHEET_ID = "1OsnO1xQFniBtEFCvGksR2KKrPt-9idE-w6-poM-wXKU"
@@ -56,9 +57,11 @@ def send_telegram_message(message: str):
     except Exception as e:
         st.warning(f"Gagal kirim notifikasi Telegram: {e}")
 
-# ==================== CEK STOK DAN KIRIM NOTIF =====================
-def check_and_notify_stock(df):
-    """Kirim notifikasi kalau stok kritis (1) atau habis (0)."""
+# ==================== CEK STOK DAN KIRIM NOTIF HARIAN =====================
+def check_and_notify_stock_daily(df, last_notif_date_dict):
+    """Kirim notif kalau stok kritis (1) atau habis (0) maksimal 1x per hari per barang."""
+    today_str = datetime.date.today().isoformat()  # YYYY-MM-DD
+
     for _, row in df.iterrows():
         nama = row.get("nama_barang", "")
         qty = row.get("qty", 0)
@@ -68,12 +71,18 @@ def check_and_notify_stock(df):
         else:
             continue
 
+        last_date = last_notif_date_dict.get(nama)
+        if last_date == today_str:
+            continue  # sudah kirim notif hari ini, skip
+
         if qty == 1:
             message = f"⚠️ <b>Peringatan!</b>\nStok barang <b>{nama}</b> tinggal <b>1</b>.\nSegera siapkan restock."
             send_telegram_message(message)
+            last_notif_date_dict[nama] = today_str
         elif qty == 0:
             message = f"🚨 <b>Stok Habis!</b>\nBarang <b>{nama}</b> sudah <b>kosong</b>.\nSegera lakukan restock!"
             send_telegram_message(message)
+            last_notif_date_dict[nama] = today_str
 
 # ==================== PAGE =====================
 def show():
@@ -108,6 +117,10 @@ def show():
     st.divider()
     st.subheader("📋 Daftar Barang di Google Sheet")
 
+    # Dictionary untuk menyimpan last notif per hari
+    if "last_notif_date" not in st.session_state:
+        st.session_state.last_notif_date = {}
+
     try:
         df = read_sheet("Stok")
         if not df.empty:
@@ -115,8 +128,8 @@ def show():
             df["harga_jual"] = df["harga_jual"].apply(lambda x: f"Rp {x:,.0f}".replace(",", "."))
             st.dataframe(df, use_container_width=True)
 
-            # 🔔 Cek stok kritis dan kirim notifikasi
-            check_and_notify_stock(df)
+            # 🔔 Cek stok & kirim notif maksimal 1x per hari
+            check_and_notify_stock_daily(df, st.session_state.last_notif_date)
         else:
             st.info("Belum ada data barang di Sheet 'Stok'.")
     except Exception as e:
