@@ -1,3 +1,4 @@
+# ===================== ORDER.PY (v5.7 FINAL) =====================
 import streamlit as st
 import pandas as pd
 import datetime
@@ -56,33 +57,23 @@ def load_local_data():
 def save_local_data(df):
     df.to_csv(DATA_FILE, index=False)
 
-# =============== NOMOR NOTA DARI SHEET ===============
+# =============== NOMOR NOTA ===============
 def get_next_nota_from_sheet():
     try:
         ws = get_worksheet(SHEET_SERVIS)
-        data = ws.col_values(1)  # kolom A = "No Nota"
-
+        data = ws.col_values(1)
         if len(data) <= 1:
             return "TRX/0000001"
-
-        last_nota = None
         for val in reversed(data):
             if val.strip():
                 last_nota = val.strip()
                 break
-
-        if not last_nota:
-            return "TRX/0000001"
-
         if last_nota.startswith("TRX/"):
             num = int(last_nota.replace("TRX/", ""))
         else:
             num = int(last_nota) if last_nota.isdigit() else 0
-
-        next_num = num + 1
-        return f"TRX/{next_num:07d}"
-    except Exception as e:
-        st.error(f"Gagal membaca nomor nota dari Google Sheet: {e}")
+        return f"TRX/{num+1:07d}"
+    except:
         return "TRX/0000001"
 
 # =============== SPREADSHEET OPS ===============
@@ -94,10 +85,9 @@ def append_to_sheet(sheet_name, data: dict):
 
 def read_sheet(sheet_name):
     ws = get_worksheet(sheet_name)
-    df = pd.DataFrame(ws.get_all_records())
-    return df
+    return pd.DataFrame(ws.get_all_records())
 
-# =============== UPLOAD ULANG CACHE ===============
+# =============== SYNC CACHE ===============
 def sync_local_cache():
     df = load_local_data()
     if df.empty:
@@ -134,6 +124,7 @@ def show():
             barang = st.text_input("Nama Barang", placeholder="Laptop ASUS A409")
             kerusakan = st.text_area("Detail Kerusakan", placeholder="Tidak bisa booting, Install Ulang")
             kelengkapan = st.text_area("Kelengkapan", placeholder="Charger, Tas")
+            jenis_transaksi = st.radio("Jenis Transaksi:", ["Cash", "Transfer"], horizontal=True, key="jenis_servis")
             harga_jasa = st.number_input("Harga Jasa (opsional)", min_value=0.0, format="%.0f")
             harga_modal = st.number_input("Harga Modal (opsional)", min_value=0.0, format="%.0f")
             submitted = st.form_submit_button("💾 Simpan Servis")
@@ -159,7 +150,7 @@ def show():
                 "Status": "Cek Dulu",
                 "Harga Jasa": harga_jasa,
                 "Harga Modal": harga_modal,
-                "Jenis Transaksi": "Servis",
+                "Jenis Transaksi": jenis_transaksi,
                 "uploaded": False
             }
 
@@ -172,7 +163,6 @@ def show():
                 st.success(f"✅ Servis {barang} berhasil disimpan ke Google Sheet!")
             except Exception as e:
                 st.warning(f"⚠️ Gagal upload ke Sheet: {e}. Disimpan lokal dulu.")
-
             save_local_data(df)
 
             msg = f"""*NOTA ELEKTRONIK*
@@ -200,15 +190,10 @@ Best Regard,
 Admin {cfg['nama_toko']}
 Terima Kasih 🙏
 """
-
-            no_hp_clean = str(no_hp).replace("+", "").replace(" ", "").replace("-", "").strip()
-            if no_hp_clean.startswith("0"):
-                no_hp_clean = "62" + no_hp_clean[1:]
-            elif not no_hp_clean.startswith("62"):
-                no_hp_clean = "62" + no_hp_clean
-
-            encoded_msg = urllib.parse.quote(msg)
-            wa_link = f"https://wa.me/{no_hp_clean}?text={requests.utils.quote(msg)}"
+            hp = str(no_hp).replace("+", "").replace(" ", "").replace("-", "").strip()
+            if hp.startswith("0"): hp = "62" + hp[1:]
+            elif not hp.startswith("62"): hp = "62" + hp
+            wa_link = f"https://wa.me/{hp}?text={requests.utils.quote(msg)}"
             st.markdown(f"[📲 KIRIM NOTA SERVIS VIA WHATSAPP]({wa_link})", unsafe_allow_html=True)
 
     # --------------------------------------
@@ -217,32 +202,23 @@ Terima Kasih 🙏
     with tab2:
         st.subheader("🧰 Penjualan Accessories / Sparepart")
 
-        # --- Baca Stok ---
         try:
             stok_df = read_sheet(SHEET_STOK)
         except:
             stok_df = pd.DataFrame(columns=["nama_barang", "modal", "harga_jual", "qty"])
 
-        if stok_df.empty:
-            st.warning("Belum ada data stok barang di Sheet 'Stok'")
+        pilihan_input = st.radio("Pilih Cara Input Transaksi:", ["📦 Pilih dari Stok", "✍️ Input Manual"], horizontal=True)
 
-        pilihan_input = st.radio(
-            "Pilih Cara Input Transaksi:",
-            ["📦 Pilih dari Stok", "✍️ Input Manual"],
-            horizontal=True
-        )
-
-        # =============== CARA 1: PILIH DARI STOK ===============
+        # === Pilih dari stok ===
         if pilihan_input == "📦 Pilih dari Stok" and not stok_df.empty:
             nama_barang = st.selectbox("Pilih Barang", stok_df["nama_barang"])
             barang_row = stok_df[stok_df["nama_barang"] == nama_barang].iloc[0]
-
             modal = float(barang_row.get("modal", 0))
             harga_default = float(barang_row.get("harga_jual", 0))
             stok = int(barang_row.get("qty", 0))
-
             harga_jual = st.number_input("Harga Jual (boleh ubah manual)", value=harga_default)
             qty = st.number_input("Jumlah Beli", min_value=1, max_value=stok if stok > 0 else 1)
+            jenis_transaksi = st.radio("Jenis Transaksi:", ["Cash", "Transfer"], horizontal=True, key="jenis_barang_stok")
             nama_pembeli = st.text_input("Nama Pembeli (opsional)")
             no_hp_pembeli = st.text_input("Nomor WhatsApp Pembeli (opsional)")
             tanggal = datetime.date.today()
@@ -251,7 +227,6 @@ Terima Kasih 🙏
                 nota = get_next_nota_from_sheet()
                 total = harga_jual * qty
                 untung = (harga_jual - modal) * qty
-
                 transaksi_data = {
                     "No Nota": nota,
                     "Tanggal": tanggal.strftime("%d/%m/%Y"),
@@ -262,22 +237,10 @@ Terima Kasih 🙏
                     "Total": total,
                     "Untung": untung,
                     "Pembeli": nama_pembeli,
-                    "Jenis Transaksi": "Barang"
+                    "Jenis Transaksi": jenis_transaksi
                 }
-
                 append_to_sheet(SHEET_TRANSAKSI, transaksi_data)
-
-                # Update stok
-                stok_baru = stok - qty
-                ws = get_worksheet(SHEET_STOK)
-                cell = ws.find(nama_barang)
-                if cell:
-                    qty_col = [i for i, c in enumerate(stok_df.columns) if c.lower() == "qty"]
-                    if qty_col:
-                        ws.update_cell(cell.row, qty_col[0] + 1, stok_baru)
-
                 st.success(f"✅ Transaksi {nama_barang} tersimpan! Untung: Rp {untung:,.0f}".replace(",", "."))
-
                 msg = f"""NOTA PENJUALAN
 
 💻 *{cfg['nama_toko']}* 💻
@@ -293,24 +256,20 @@ Total   : Rp {total:,.0f}
 
 Terima kasih sudah berbelanja!
 """
-
                 if no_hp_pembeli:
                     hp = str(no_hp_pembeli).replace("+", "").replace(" ", "").replace("-", "")
-                    if hp.startswith("0"):
-                        hp = "62" + hp[1:]
-                    elif not hp.startswith("62"):
-                        hp = "62" + hp
-
-                    encoded_msg = urllib.parse.quote(msg)
+                    if hp.startswith("0"): hp = "62" + hp[1:]
+                    elif not hp.startswith("62"): hp = "62" + hp
                     wa_link = f"https://wa.me/{hp}?text={requests.utils.quote(msg)}"
                     st.markdown(f"[📲 KIRIM NOTA VIA WHATSAPP]({wa_link})", unsafe_allow_html=True)
 
-        # =============== CARA 2: INPUT MANUAL ===============
+        # === Input manual ===
         if pilihan_input == "✍️ Input Manual":
             nama_barang_manual = st.text_input("Nama Barang")
             modal_manual = st.number_input("Harga Modal", min_value=0.0, format="%.0f")
             harga_manual = st.number_input("Harga Jual", min_value=0.0, format="%.0f")
             qty_manual = st.number_input("Jumlah Beli", min_value=1)
+            jenis_transaksi = st.radio("Jenis Transaksi:", ["Cash", "Transfer"], horizontal=True, key="jenis_barang_manual")
             nama_pembeli_manual = st.text_input("Nama Pembeli (opsional)")
             no_hp_pembeli_manual = st.text_input("Nomor WhatsApp Pembeli (opsional)")
             tanggal_manual = datetime.date.today()
@@ -322,7 +281,6 @@ Terima kasih sudah berbelanja!
                     nota = get_next_nota_from_sheet()
                     total = harga_manual * qty_manual
                     untung = (harga_manual - modal_manual) * qty_manual
-
                     transaksi_data = {
                         "No Nota": nota,
                         "Tanggal": tanggal_manual.strftime("%d/%m/%Y"),
@@ -333,38 +291,10 @@ Terima kasih sudah berbelanja!
                         "Total": total,
                         "Untung": untung,
                         "Pembeli": nama_pembeli_manual,
-                        "Jenis Transaksi": "Barang"
+                        "Jenis Transaksi": jenis_transaksi
                     }
-
                     append_to_sheet(SHEET_TRANSAKSI, transaksi_data)
-
-                    # Cek apakah barang sudah ada di stok
-                    ws = get_worksheet(SHEET_STOK)
-                    try:
-                        cell = ws.find(nama_barang_manual)
-                        if cell:
-                            # update qty stok bertambah (karena manual dianggap stok tersedia)
-                            current_qty = int(stok_df.loc[stok_df['nama_barang'] == nama_barang_manual, 'qty'].iloc[0])
-                            ws.update_cell(cell.row, stok_df.columns.get_loc('qty') + 1, current_qty - qty_manual)
-                        else:
-                            # barang belum ada → buat baru dengan stok awal = 0 - qty_manual
-                            headers = ws.row_values(1)
-                            row_data = ["" for _ in headers]
-                            for idx, h in enumerate(headers):
-                                if h.lower() == "nama_barang":
-                                    row_data[idx] = nama_barang_manual
-                                elif h.lower() == "modal":
-                                    row_data[idx] = modal_manual
-                                elif h.lower() == "harga_jual":
-                                    row_data[idx] = harga_manual
-                                elif h.lower() == "qty":
-                                    row_data[idx] = 0 - qty_manual
-                            ws.append_row(row_data, value_input_option="USER_ENTERED")
-                    except Exception as e:
-                        st.warning(f"Gagal update stok: {e}")
-
                     st.success(f"✅ Transaksi manual {nama_barang_manual} tersimpan! Untung: Rp {untung:,.0f}".replace(",", "."))
-
                     msg = f"""NOTA PENJUALAN
 
 💻 *{cfg['nama_toko']}* 💻
@@ -380,20 +310,13 @@ Total   : Rp {total:,.0f}
 
 Terima kasih sudah berbelanja!
 """
-
                     if no_hp_pembeli_manual:
                         hp = str(no_hp_pembeli_manual).replace("+", "").replace(" ", "").replace("-", "")
-                        if hp.startswith("0"):
-                            hp = "62" + hp[1:]
-                        elif not hp.startswith("62"):
-                            hp = "62" + hp
-
-                        encoded_msg = urllib.parse.quote(msg)
+                        if hp.startswith("0"): hp = "62" + hp[1:]
+                        elif not hp.startswith("62"): hp = "62" + hp
                         wa_link = f"https://wa.me/{hp}?text={requests.utils.quote(msg)}"
                         st.markdown(f"[📲 KIRIM NOTA VIA WHATSAPP]({wa_link})", unsafe_allow_html=True)
 
 
-
-# Jalankan di Streamlit
 if __name__ == "__main__":
     show()
