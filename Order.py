@@ -2,17 +2,37 @@ import streamlit as st
 import pandas as pd
 import datetime
 import os
-import requests
+import gspread
+from oauth2client.service_account import ServiceAccountCredentials
 import json
 
-# ---------------------- KONFIGURASI ----------------------
+# ================= CONFIG ==================
 DATA_FILE = "service_data.csv"
 CONFIG_FILE = "config.json"
 COUNTER_FILE = "nota_counter.txt"
-FIREBASE_URL = "https://toko-4960c-default-rtdb.asia-southeast1.firebasedatabase.app/"
 
+SPREADSHEET_ID = "1uTVKVIuhqSiGU8vqE0cVGWdsd7cqSzTA"
+SHEET_SERVIS = "Servis"
+SHEET_TRANSAKSI = "Transaksi"
+SHEET_STOK = "Stok"
 
-# ---------------------- CONFIG ----------------------
+# =============== AUTH GOOGLE ===============
+def authenticate_google():
+    creds_dict = st.secrets["gcp_service_account"]
+    scope = [
+        "https://spreadsheets.google.com/feeds",
+        "https://www.googleapis.com/auth/drive"
+    ]
+    credentials = ServiceAccountCredentials.from_json_keyfile_dict(creds_dict, scope)
+    client = gspread.authorize(credentials)
+    return client
+
+def get_worksheet(sheet_name):
+    client = authenticate_google()
+    sh = client.open_by_key(SPREADSHEET_ID)
+    return sh.worksheet(sheet_name)
+
+# =============== CONFIG FILE ===============
 def load_config():
     if os.path.exists(CONFIG_FILE):
         with open(CONFIG_FILE, "r") as f:
@@ -23,8 +43,7 @@ def load_config():
         "telepon": "085172174759"
     }
 
-
-# ---------------------- NOMOR NOTA ----------------------
+# =============== NOMOR NOTA ===============
 def get_next_nota():
     if not os.path.exists(COUNTER_FILE):
         with open(COUNTER_FILE, "w") as f:
@@ -38,58 +57,28 @@ def get_next_nota():
             f.write(str(next_num))
         return f"TRX/{next_num:07d}"
 
+# =============== SPREADSHEET OPS ===============
+def append_to_sheet(sheet_name, data: dict):
+    ws = get_worksheet(sheet_name)
+    headers = ws.row_values(1)
+    row = [data.get(h, "") for h in headers]
+    ws.append_row(row, value_input_option="USER_ENTERED")
 
-# ---------------------- DATA ----------------------
-def load_data():
-    if os.path.exists(DATA_FILE):
-        return pd.read_csv(DATA_FILE)
-    return pd.DataFrame(columns=[
-        "No Nota", "Tanggal Masuk", "Estimasi Selesai", "Nama Pelanggan", "No HP",
-        "Barang", "Kerusakan", "Kelengkapan", "Status", "Harga Jasa"
-    ])
+def read_sheet(sheet_name):
+    ws = get_worksheet(sheet_name)
+    df = pd.DataFrame(ws.get_all_records())
+    return df
 
-
-def save_data(df):
-    df.to_csv(DATA_FILE, index=False)
-
-
-# ---------------------- SIMPAN KE FIREBASE ----------------------
-def save_to_firebase(data, path="servis"):
-    try:
-        r = requests.post(f"{FIREBASE_URL}/{path}.json", json=data)
-        if r.status_code == 200:
-            return True
-        else:
-            st.warning(f"Gagal simpan ke Firebase ({path}): {r.text}")
-            return False
-    except Exception as e:
-        st.error(f"Error koneksi Firebase ({path}): {e}")
-        return False
-
-
-# ---------------------- MUAT DATA STOK DARI FIREBASE ----------------------
-def load_stok_barang():
-    try:
-        r = requests.get(f"{FIREBASE_URL}/stok_barang.json")
-        if r.status_code == 200 and r.text != "null":
-            data = r.json()
-            df = pd.DataFrame.from_dict(data, orient="index")
-            return df
-    except:
-        pass
-    return pd.DataFrame(columns=["nama_barang", "modal", "harga_jual", "qty"])
-
-
-# ---------------------- PAGE ----------------------
+# =============== PAGE APP ===============
 def show():
     cfg = load_config()
     st.title("🧾 Transaksi Servis & Barang")
 
     tab1, tab2 = st.tabs(["🛠️ Servis Baru", "🧰 Transaksi Barang"])
 
-    # =============================================
-    # TAB 1 : SERVIS
-    # =============================================
+    # --------------------------------------
+    # TAB 1 : SERVIS BARU
+    # --------------------------------------
     with tab1:
         with st.form("form_service"):
             tanggal_masuk = st.date_input("Tanggal Masuk", value=datetime.date.today())
@@ -106,13 +95,11 @@ def show():
                 st.error("Nama, Nomor HP, dan Barang wajib diisi!")
                 return
 
-            df = load_data()
             nota = get_next_nota()
-
             tanggal_masuk_str = tanggal_masuk.strftime("%d/%m/%Y")
             estimasi_selesai = estimasi.strftime("%d/%m/%Y")
 
-            new = pd.DataFrame([{
+            service_data = {
                 "No Nota": nota,
                 "Tanggal Masuk": tanggal_masuk_str,
                 "Estimasi Selesai": estimasi_selesai,
@@ -122,37 +109,20 @@ def show():
                 "Kerusakan": kerusakan,
                 "Kelengkapan": kelengkapan,
                 "Status": "Cek Dulu",
-                "Harga Jasa": ""
-            }])
-
-            df = pd.concat([df, new], ignore_index=True)
-            save_data(df)
-
-            firebase_data = {
-                "no_nota": nota,
-                "tanggal_masuk": tanggal_masuk_str,
-                "estimasi_selesai": estimasi_selesai,
-                "nama_pelanggan": nama,
-                "no_hp": no_hp,
-                "barang": barang,
-                "kerusakan": kerusakan,
-                "kelengkapan": kelengkapan,
-                "status": "Cek Dulu",
-                "harga_jasa": "",
-                "timestamp": datetime.datetime.now().isoformat()
+                "Harga Jasa": "",
+                "Jenis Transaksi": "Servis"
             }
-            save_to_firebase(firebase_data, "servis")
 
-            msg = f"""NOTA ELEKTRONIK
+            append_to_sheet(SHEET_SERVIS, service_data)
+            st.success(f"✅ Servis {barang} berhasil disimpan ke Google Sheet!")
 
-💻 *{cfg['nama_toko']}* 💻
+            msg = f"""🧾 *{cfg['nama_toko']}*
 {cfg['alamat']}
-HP : {cfg['telepon']}
+HP: {cfg['telepon']}
 
 =======================
 *No Nota* : {nota}
 *Pelanggan* : {nama}
-
 *Tanggal Masuk* : {tanggal_masuk_str}
 *Estimasi Selesai* : {estimasi_selesai}
 =======================
@@ -162,7 +132,6 @@ HP : {cfg['telepon']}
 =======================
 *Harga* : (Cek Dulu)
 *Status* : Cek Dulu
-Dapatkan Promo Mahasiswa
 =======================
 
 Best Regard
@@ -175,19 +144,22 @@ Terima Kasih 🙏"""
             elif not no_hp.startswith("62"):
                 no_hp = "62" + no_hp
 
-            link = f"https://wa.me/{no_hp}?text={requests.utils.quote(msg)}"
-            st.success(f"✅ Servis {barang} berhasil disimpan dan dikirim ke Firebase!")
+            link = f"https://wa.me/{no_hp}?text={msg.replace(' ', '%20')}"
             st.markdown(f"[📲 KIRIM NOTA SERVIS VIA WHATSAPP]({link})", unsafe_allow_html=True)
 
-    # =============================================
+    # --------------------------------------
     # TAB 2 : TRANSAKSI BARANG
-    # =============================================
+    # --------------------------------------
     with tab2:
         st.subheader("🧰 Penjualan Accessories / Sparepart")
-        stok_df = load_stok_barang()
+        try:
+            stok_df = read_sheet(SHEET_STOK)
+        except:
+            st.warning("Belum ada Sheet bernama 'Stok'.")
+            return
 
         if stok_df.empty:
-            st.warning("Belum ada data stok barang dari Admin.py")
+            st.warning("Belum ada data stok barang di Sheet 'Stok'")
             return
 
         nama_barang = st.selectbox("Pilih Barang", stok_df["nama_barang"])
@@ -200,36 +172,65 @@ Terima Kasih 🙏"""
         harga_jual = st.number_input("Harga Jual (boleh ubah manual)", value=harga_default)
         qty = st.number_input("Jumlah Beli", min_value=1, max_value=stok if stok > 0 else 1)
         nama_pembeli = st.text_input("Nama Pembeli (opsional)")
+        no_hp_pembeli = st.text_input("Nomor WhatsApp Pembeli (opsional)")
         tanggal = datetime.date.today()
 
         if st.button("💾 Simpan Transaksi"):
+            nota = get_next_nota()
             total = harga_jual * qty
-            untung = (harga_jual - modal) * qty  # tambahkan perhitungan untung
+            untung = (harga_jual - modal) * qty
 
             transaksi_data = {
-                "tanggal": tanggal.strftime("%d/%m/%Y"),
-                "nama_barang": nama_barang,
-                "modal": modal,
-                "harga_jual": harga_jual,
-                "qty": qty,
-                "total": total,
-                "untung": untung,   # kolom baru
-                "pembeli": nama_pembeli,
-                "timestamp": datetime.datetime.now().isoformat()
+                "No Nota": nota,
+                "Tanggal": tanggal.strftime("%d/%m/%Y"),
+                "Nama Barang": nama_barang,
+                "Modal": modal,
+                "Harga Jual": harga_jual,
+                "Qty": qty,
+                "Total": total,
+                "Untung": untung,
+                "Pembeli": nama_pembeli,
+                "Jenis Transaksi": "Barang"
             }
 
-            if save_to_firebase(transaksi_data, "transaksi"):
-                stok_baru = stok - qty
-                try:
-                    key_response = requests.get(f"{FIREBASE_URL}/stok_barang.json")
-                    if key_response.status_code == 200:
-                        all_data = key_response.json()
-                        for key, val in all_data.items():
-                            if val.get("nama_barang") == nama_barang:
-                                requests.patch(f"{FIREBASE_URL}/stok_barang/{key}.json", json={"qty": stok_baru})
-                                break
-                except Exception as e:
-                    st.warning(f"Gagal update stok barang: {e}")
+            append_to_sheet(SHEET_TRANSAKSI, transaksi_data)
 
-                st.success(f"✅ Transaksi {nama_barang} berhasil disimpan! Untung: Rp {untung:,.0f}".replace(",", "."))
+            # Update stok
+            stok_baru = stok - qty
+            ws = get_worksheet(SHEET_STOK)
+            cell = ws.find(nama_barang)
+            if cell:
+                qty_col = [i for i, c in enumerate(stok_df.columns) if c.lower() == "qty"]
+                if qty_col:
+                    ws.update_cell(cell.row, qty_col[0] + 1, stok_baru)
 
+            st.success(f"✅ Transaksi {nama_barang} tersimpan! Untung: Rp {untung:,.0f}".replace(",", "."))
+
+            # Buat nota WA
+            msg = f"""🧾 *{cfg['nama_toko']}*
+{cfg['alamat']}
+HP: {cfg['telepon']}
+
+No Nota : {nota}
+Tanggal : {tanggal.strftime('%d/%m/%Y')}
+Barang  : {nama_barang}
+Qty     : {qty}
+Harga   : Rp {harga_jual:,.0f}
+Total   : Rp {total:,.0f}
+
+Terima kasih sudah berbelanja!
+"""
+
+            if no_hp_pembeli:
+                no_hp = str(no_hp_pembeli).replace(" ", "").replace("-", "").replace("+", "")
+                if no_hp.startswith("0"):
+                    no_hp = "62" + no_hp[1:]
+                elif not no_hp.startswith("62"):
+                    no_hp = "62" + no_hp
+                link = f"https://wa.me/{no_hp}?text={msg.replace(' ', '%20')}"
+                st.markdown(f"[📲 KIRIM NOTA VIA WHATSAPP]({link})", unsafe_allow_html=True)
+
+
+# Jalankan di Streamlit
+if __name__ == "__main__":
+    show()
