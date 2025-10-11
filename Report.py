@@ -1,4 +1,4 @@
-# =================== REPORT.PY (v5.1 WA Auto-Open + Sinkron Harga) ===================
+# =================== REPORT.PY (v5.2 WA Auto-Open + Sinkron Harga) ===================
 import streamlit as st
 import pandas as pd
 import datetime
@@ -264,7 +264,6 @@ def show():
                         </script>
                         """
                         st.markdown(js, unsafe_allow_html=True)
-                        st.experimental_rerun()
                     else:
                         st.warning("Nomor HP pelanggan kosong — tidak dapat membuka WhatsApp.")
 
