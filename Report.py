@@ -1,4 +1,4 @@
-# =================== REPORT.PY (v5.4 FIX FILTER PER HARI + BULAN) ===================
+# =================== REPORT.PY (v5.5 FINAL FIX FILTER PER HARI + BULAN) ===================
 import streamlit as st
 import pandas as pd
 import datetime
@@ -119,8 +119,8 @@ def show():
         for col in ["Tanggal Masuk", "Estimasi Selesai", "Harga Jasa", "Harga Modal", "Status", "No Nota", "Nama Pelanggan", "No HP", "Barang"]:
             if col not in df_servis.columns:
                 df_servis[col] = ""
-        df_servis["Tanggal Masuk"] = pd.to_datetime(df_servis["Tanggal Masuk"], format="%d/%m/%Y", errors="coerce").dt.date
-        df_servis["Estimasi Selesai"] = pd.to_datetime(df_servis["Estimasi Selesai"], format="%d/%m/%Y", errors="coerce").dt.date
+        df_servis["Tanggal Masuk"] = pd.to_datetime(df_servis["Tanggal Masuk"], dayfirst=True, errors="coerce").dt.date
+        df_servis["Estimasi Selesai"] = pd.to_datetime(df_servis["Estimasi Selesai"], dayfirst=True, errors="coerce").dt.date
         df_servis["Harga Jasa Num"] = df_servis["Harga Jasa"].apply(parse_rp_to_int)
         df_servis["Harga Modal Num"] = df_servis["Harga Modal"].apply(parse_rp_to_int)
         df_servis["Keuntungan"] = df_servis["Harga Jasa Num"] - df_servis["Harga Modal Num"]
@@ -131,7 +131,7 @@ def show():
         for c in ["Tanggal", "Modal", "Harga Jual", "Qty", "Untung"]:
             if c not in df_transaksi.columns:
                 df_transaksi[c] = ""
-        df_transaksi["Tanggal"] = pd.to_datetime(df_transaksi["Tanggal"], format="%d/%m/%Y", errors="coerce").dt.date
+        df_transaksi["Tanggal"] = pd.to_datetime(df_transaksi["Tanggal"], dayfirst=True, errors="coerce").dt.date
         for c in ["Modal", "Harga Jual", "Qty", "Untung"]:
             df_transaksi[c] = pd.to_numeric(df_transaksi[c], errors="coerce").fillna(0)
         df_transaksi["Total"] = df_transaksi["Harga Jual"] * df_transaksi["Qty"]
@@ -151,35 +151,28 @@ def show():
     else:
         bulan_servis = set()
         bulan_transaksi = set()
-        
+
         if not df_servis.empty and "Tanggal Masuk" in df_servis.columns:
             bulan_servis = set(df_servis["Tanggal Masuk"].dropna().map(lambda d: d.strftime("%Y-%m")))
-        
         if not df_transaksi.empty and "Tanggal" in df_transaksi.columns:
             bulan_transaksi = set(df_transaksi["Tanggal"].dropna().map(lambda d: d.strftime("%Y-%m")))
-        
-        bulan_unik = sorted(bulan_servis | bulan_transaksi)
 
+        bulan_unik = sorted(bulan_servis | bulan_transaksi)
         pilih_bulan = st.sidebar.selectbox("Pilih Bulan:", ["Semua Bulan"] + bulan_unik, index=0)
+
         if pilih_bulan == "Semua Bulan":
             df_servis_f = df_servis.copy()
             df_transaksi_f = df_transaksi.copy()
         else:
-            if pilih_bulan != "Semua Bulan":
             tahun, bulan = map(int, pilih_bulan.split("-"))
             if not df_servis.empty and "Tanggal Masuk" in df_servis.columns:
                 df_servis_f = df_servis[df_servis["Tanggal Masuk"].apply(lambda d: pd.notna(d) and d.year == tahun and d.month == bulan)]
             else:
                 df_servis_f = pd.DataFrame()
-        
             if not df_transaksi.empty and "Tanggal" in df_transaksi.columns:
                 df_transaksi_f = df_transaksi[df_transaksi["Tanggal"].apply(lambda d: pd.notna(d) and d.year == tahun and d.month == bulan)]
             else:
                 df_transaksi_f = pd.DataFrame()
-        else:
-            df_servis_f = df_servis.copy()
-            df_transaksi_f = df_transaksi.copy()
-
 
     # ========== HITUNG LABA ==========
     total_servis = df_servis_f["Keuntungan"].sum() if not df_servis_f.empty else 0
