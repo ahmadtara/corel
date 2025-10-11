@@ -5,15 +5,15 @@ import os
 import gspread
 from oauth2client.service_account import ServiceAccountCredentials
 import json
+import requests
 
 # ================= CONFIG ==================
-DATA_FILE = "service_data.csv"
-CONFIG_FILE = "config.json"
-
 SPREADSHEET_ID = "1OsnO1xQFniBtEFCvGksR2KKrPt-9idE-w6-poM-wXKU"
 SHEET_SERVIS = "Servis"
 SHEET_TRANSAKSI = "Transaksi"
 SHEET_STOK = "Stok"
+CONFIG_FILE = "config.json"
+DATA_FILE = "service_data.csv"  # cache lokal
 
 # =============== AUTH GOOGLE ===============
 def authenticate_google():
@@ -42,6 +42,19 @@ def load_config():
         "telepon": "085172174759"
     }
 
+# =============== CACHE CSV ===============
+def load_local_data():
+    if os.path.exists(DATA_FILE):
+        return pd.read_csv(DATA_FILE)
+    return pd.DataFrame(columns=[
+        "No Nota", "Tanggal Masuk", "Estimasi Selesai", "Nama Pelanggan", "No HP",
+        "Barang", "Kerusakan", "Kelengkapan", "Status", "Harga Jasa", "Harga Modal",
+        "Jenis Transaksi", "uploaded"
+    ])
+
+def save_local_data(df):
+    df.to_csv(DATA_FILE, index=False)
+
 # =============== NOMOR NOTA DARI SHEET ===============
 def get_next_nota_from_sheet():
     try:
@@ -52,7 +65,6 @@ def get_next_nota_from_sheet():
             return "TRX/0000001"
 
         last_nota = None
-        # cari nota terakhir valid (skip baris kosong)
         for val in reversed(data):
             if val.strip():
                 last_nota = val.strip()
@@ -84,9 +96,27 @@ def read_sheet(sheet_name):
     df = pd.DataFrame(ws.get_all_records())
     return df
 
+# =============== UPLOAD ULANG CACHE ===============
+def sync_local_cache():
+    df = load_local_data()
+    if df.empty:
+        return
+    not_uploaded = df[df["uploaded"] == False]
+    if not not_uploaded.empty:
+        st.info(f"🔁 Mengupload ulang {len(not_uploaded)} data tersimpan lokal...")
+        for _, row in not_uploaded.iterrows():
+            try:
+                append_to_sheet(SHEET_SERVIS, row.to_dict())
+                df.loc[df["No Nota"] == row["No Nota"], "uploaded"] = True
+            except Exception as e:
+                st.warning(f"Gagal upload {row['No Nota']}: {e}")
+        save_local_data(df)
+        st.success("✅ Sinkronisasi cache selesai!")
+
 # =============== PAGE APP ===============
 def show():
     cfg = load_config()
+    sync_local_cache()
     st.title("🧾 Transaksi Servis & Barang")
 
     tab1, tab2 = st.tabs(["🛠️ Servis Baru", "🧰 Transaksi Barang"])
@@ -103,6 +133,8 @@ def show():
             barang = st.text_input("Nama Barang", placeholder="Laptop ASUS A409")
             kerusakan = st.text_area("Detail Kerusakan", placeholder="Tidak bisa booting, Install Ulang")
             kelengkapan = st.text_area("Kelengkapan", placeholder="Charger, Tas")
+            harga_jasa = st.number_input("Harga Jasa (opsional)", min_value=0.0, format="%.0f")
+            harga_modal = st.number_input("Harga Modal (opsional)", min_value=0.0, format="%.0f")
             submitted = st.form_submit_button("💾 Simpan Servis")
 
         if submitted:
@@ -124,16 +156,29 @@ def show():
                 "Kerusakan": kerusakan,
                 "Kelengkapan": kelengkapan,
                 "Status": "Cek Dulu",
-                "Harga Jasa": "",
-                "Jenis Transaksi": "Servis"
+                "Harga Jasa": harga_jasa,
+                "Harga Modal": harga_modal,
+                "Jenis Transaksi": "Servis",
+                "uploaded": False
             }
 
-            append_to_sheet(SHEET_SERVIS, service_data)
-            st.success(f"✅ Servis {barang} berhasil disimpan ke Google Sheet!")
+            df = load_local_data()
+            df = pd.concat([df, pd.DataFrame([service_data])], ignore_index=True)
 
-            msg = f"""🧾 *{cfg['nama_toko']}*
+            try:
+                append_to_sheet(SHEET_SERVIS, service_data)
+                df.loc[df["No Nota"] == nota, "uploaded"] = True
+                st.success(f"✅ Servis {barang} berhasil disimpan ke Google Sheet!")
+            except Exception as e:
+                st.warning(f"⚠️ Gagal upload ke Sheet: {e}. Disimpan lokal dulu.")
+
+            save_local_data(df)
+
+            msg = f"""NOTA ELEKTRONIK
+
+💻 *{cfg['nama_toko']}* 💻
 {cfg['alamat']}
-HP: {cfg['telepon']}
+HP : {cfg['telepon']}
 
 =======================
 *No Nota* : {nota}
@@ -147,20 +192,21 @@ HP: {cfg['telepon']}
 =======================
 *Harga* : (Cek Dulu)
 *Status* : Cek Dulu
+Dapatkan Promo Mahasiswa
 =======================
 
 Best Regard
 Admin {cfg['nama_toko']}
 Terima Kasih 🙏"""
 
-            no_hp = str(no_hp).replace(" ", "").replace("-", "").replace("+", "").strip()
-            if no_hp.startswith("0"):
-                no_hp = "62" + no_hp[1:]
-            elif not no_hp.startswith("62"):
-                no_hp = "62" + no_hp
+            no_hp_clean = str(no_hp).replace("+", "").replace(" ", "").replace("-", "").strip()
+            if no_hp_clean.startswith("0"):
+                no_hp_clean = "62" + no_hp_clean[1:]
+            elif not no_hp_clean.startswith("62"):
+                no_hp_clean = "62" + no_hp_clean
 
-            link = f"https://wa.me/{no_hp}?text={msg.replace(' ', '%20')}"
-            st.markdown(f"[📲 KIRIM NOTA SERVIS VIA WHATSAPP]({link})", unsafe_allow_html=True)
+            wa_link = f"https://wa.me/{no_hp_clean}?text={requests.utils.quote(msg)}"
+            st.markdown(f"[📲 KIRIM NOTA SERVIS VIA WHATSAPP]({wa_link})", unsafe_allow_html=True)
 
     # --------------------------------------
     # TAB 2 : TRANSAKSI BARANG
@@ -221,10 +267,11 @@ Terima Kasih 🙏"""
 
             st.success(f"✅ Transaksi {nama_barang} tersimpan! Untung: Rp {untung:,.0f}".replace(",", "."))
 
-            # Buat nota WA
-            msg = f"""🧾 *{cfg['nama_toko']}*
+            msg = f"""NOTA PENJUALAN
+
+💻 *{cfg['nama_toko']}* 💻
 {cfg['alamat']}
-HP: {cfg['telepon']}
+HP : {cfg['telepon']}
 
 No Nota : {nota}
 Tanggal : {tanggal.strftime('%d/%m/%Y')}
@@ -237,13 +284,13 @@ Terima kasih sudah berbelanja!
 """
 
             if no_hp_pembeli:
-                no_hp = str(no_hp_pembeli).replace(" ", "").replace("-", "").replace("+", "")
-                if no_hp.startswith("0"):
-                    no_hp = "62" + no_hp[1:]
-                elif not no_hp.startswith("62"):
-                    no_hp = "62" + no_hp
-                link = f"https://wa.me/{no_hp}?text={msg.replace(' ', '%20')}"
-                st.markdown(f"[📲 KIRIM NOTA VIA WHATSAPP]({link})", unsafe_allow_html=True)
+                hp = str(no_hp_pembeli).replace("+", "").replace(" ", "").replace("-", "")
+                if hp.startswith("0"):
+                    hp = "62" + hp[1:]
+                elif not hp.startswith("62"):
+                    hp = "62" + hp
+                wa_link = f"https://wa.me/{hp}?text={requests.utils.quote(msg)}"
+                st.markdown(f"[📲 KIRIM NOTA VIA WHATSAPP]({wa_link})", unsafe_allow_html=True)
 
 
 # Jalankan di Streamlit
