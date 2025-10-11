@@ -1,4 +1,4 @@
-# ===================== ORDER.PY (v5.9 FINAL - PREFIX SRV & TRX + AUTO KURANG STOK) =====================
+# ===================== ORDER.PY (v6.0 - REALTIME WIB VIA API + PREFIX SRV/TRX + AUTO KURANG STOK) =====================
 import streamlit as st
 import pandas as pd
 import datetime
@@ -44,6 +44,19 @@ def load_config():
         "telepon": "085172174759"
     }
 
+# =============== REALTIME WIB ===============
+def get_internet_date():
+    """Ambil tanggal real dari internet (Asia/Jakarta), fallback ke lokal jika gagal."""
+    try:
+        res = requests.get("https://worldtimeapi.org/api/timezone/Asia/Jakarta", timeout=5)
+        if res.status_code == 200:
+            data = res.json()
+            dt = datetime.datetime.fromisoformat(data["datetime"].replace("Z", "+00:00"))
+            return dt.date()
+    except Exception as e:
+        print("⚠️ Gagal ambil waktu internet:", e)
+    return datetime.date.today()
+
 # =============== CACHE CSV ===============
 def load_local_data():
     if os.path.exists(DATA_FILE):
@@ -59,10 +72,7 @@ def save_local_data(df):
 
 # =============== NOMOR NOTA ===============
 def get_next_nota_from_sheet(sheet_name, prefix):
-    """
-    Ambil nomor nota terakhir dari sheet_name, lalu naikkan +1.
-    Prefix otomatis: SRV/ untuk Servis, TRX/ untuk Transaksi.
-    """
+    """Ambil nomor nota terakhir dari sheet_name, lalu naikkan +1 (prefix SRV/TRX)."""
     try:
         ws = get_worksheet(sheet_name)
         data = ws.col_values(1)
@@ -123,8 +133,8 @@ def show():
     # --------------------------------------
     with tab1:
         with st.form("form_service"):
-            tanggal_masuk = st.date_input("Tanggal Masuk", value=datetime.date.today())
-            estimasi = st.date_input("Estimasi Selesai", value=datetime.date.today() + datetime.timedelta(days=3))
+            tanggal_masuk = st.date_input("Tanggal Masuk", value=get_internet_date())
+            estimasi = st.date_input("Estimasi Selesai", value=get_internet_date() + datetime.timedelta(days=3))
             nama = st.text_input("Nama Pelanggan", placeholder="King Dion")
             no_hp = st.text_input("Nomor WhatsApp", placeholder="081234567890")
             barang = st.text_input("Nama Barang", placeholder="Laptop ASUS A409")
@@ -227,7 +237,7 @@ Terima Kasih 🙏
             jenis_transaksi = st.radio("Jenis Transaksi:", ["Cash", "Transfer"], horizontal=True, key="jenis_barang_stok")
             nama_pembeli = st.text_input("Nama Pembeli (opsional)")
             no_hp_pembeli = st.text_input("Nomor WhatsApp Pembeli (opsional)")
-            tanggal = datetime.date.today()
+            tanggal = get_internet_date()
 
             if st.button("💾 Simpan Transaksi dari Stok"):
                 nota = get_next_nota_from_sheet(SHEET_TRANSAKSI, "TRX/")
@@ -247,7 +257,7 @@ Terima Kasih 🙏
                 }
                 append_to_sheet(SHEET_TRANSAKSI, transaksi_data)
 
-                # 🔥 Tambahan: kurangi stok otomatis
+                # 🔥 Kurangi stok otomatis
                 try:
                     ws_stok = get_worksheet(SHEET_STOK)
                     stok_data = ws_stok.get_all_records()
@@ -294,7 +304,7 @@ Terima kasih sudah berbelanja!
             jenis_transaksi = st.radio("Jenis Transaksi:", ["Cash", "Transfer"], horizontal=True, key="jenis_barang_manual")
             nama_pembeli_manual = st.text_input("Nama Pembeli (opsional)")
             no_hp_pembeli_manual = st.text_input("Nomor WhatsApp Pembeli (opsional)")
-            tanggal_manual = datetime.date.today()
+            tanggal_manual = get_internet_date()
 
             if st.button("💾 Simpan Transaksi Manual"):
                 if not nama_barang_manual or harga_manual <= 0:
@@ -338,7 +348,6 @@ Terima kasih sudah berbelanja!
                         elif not hp.startswith("62"): hp = "62" + hp
                         wa_link = f"https://wa.me/{hp}?text={requests.utils.quote(msg)}"
                         st.markdown(f"[📲 KIRIM NOTA VIA WHATSAPP]({wa_link})", unsafe_allow_html=True)
-
 
 if __name__ == "__main__":
     show()
