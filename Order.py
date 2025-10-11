@@ -11,7 +11,7 @@ DATA_FILE = "service_data.csv"
 CONFIG_FILE = "config.json"
 COUNTER_FILE = "nota_counter.txt"
 
-SPREADSHEET_ID = "1zrgkTKGcq6_fdGRBkHYj5Km8nuyOdM6d3Wjetq8ucpk"
+SPREADSHEET_ID = "1OsnO1xQFniBtEFCvGksR2KKrPt-9idE-w6-poM-wXKU"
 SHEET_SERVIS = "Servis"
 SHEET_TRANSAKSI = "Transaksi"
 SHEET_STOK = "Stok"
