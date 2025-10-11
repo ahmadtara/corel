@@ -1,4 +1,4 @@
-# =================== REPORT.PY (v5.2 WA Auto-Open + Sinkron Harga) ===================
+# =================== REPORT.PY (v5.3 FIX WA AUTO-OPEN + Sinkron Harga) ===================
 import streamlit as st
 import pandas as pd
 import datetime
@@ -7,6 +7,7 @@ import os
 import gspread
 from oauth2client.service_account import ServiceAccountCredentials
 import urllib.parse
+import requests
 
 # ------------------- CONFIG -------------------
 CONFIG_FILE = "config.json"
@@ -73,7 +74,7 @@ def update_sheet_row_by_nota(sheet_name, nota, updates: dict):
                 col = headers.index(k) + 1
                 ws.update_cell(row, col, v)
             else:
-                st.warning(f"Kolom '{k}' tidak ditemukan di sheet '{sheet_name}'. Lewati update untuk kolom ini.")
+                st.warning(f"Kolom '{k}' tidak ditemukan di sheet '{sheet_name}'. Lewati update.")
         return True
     except Exception as e:
         st.error(f"Gagal update sheet {sheet_name} untuk nota {nota}: {e}")
@@ -137,8 +138,7 @@ def show():
                 df_transaksi[c] = ""
         df_transaksi["Tanggal"] = pd.to_datetime(df_transaksi["Tanggal"], format="%d/%m/%Y", errors="coerce").dt.date
         for c in ["Modal", "Harga Jual", "Qty", "Untung"]:
-            if c in df_transaksi.columns:
-                df_transaksi[c] = pd.to_numeric(df_transaksi[c], errors="coerce").fillna(0)
+            df_transaksi[c] = pd.to_numeric(df_transaksi[c], errors="coerce").fillna(0)
         df_transaksi["Total"] = df_transaksi["Harga Jual"] * df_transaksi["Qty"]
         df_transaksi["Untung"] = df_transaksi["Untung"].fillna(
             (df_transaksi["Harga Jual"] - df_transaksi["Modal"]) * df_transaksi["Qty"]
@@ -200,7 +200,7 @@ def show():
     else:
         st.info("Tidak ada data servis untuk periode ini.")
 
-    # ========== LOOP EXPANDER PER ROW (INPUT HARGA + KIRIM WA) ==========
+    # ========== LOOP EXPANDER (INPUT HARGA + WA) ==========
     st.divider()
     st.subheader("📱 Klik Pelanggan Untuk Input Harga & Kirim WA Otomatis")
     if not df_servis_f.empty:
@@ -212,21 +212,22 @@ def show():
             status_now = row.get("Status", "")
 
             with st.expander(f"{nama_pelanggan} - {barang} ({status_now})"):
-                existing_harga_jasa = str(row.get("Harga Jasa","")).replace("Rp","").replace(".","").strip() if pd.notna(row.get("Harga Jasa","")) else ""
-                existing_harga_modal = str(row.get("Harga Modal","")).replace("Rp","").replace(".","").strip() if pd.notna(row.get("Harga Modal","")) else ""
+                existing_hj = str(row.get("Harga Jasa","")).replace("Rp","").replace(".","").strip() if pd.notna(row.get("Harga Jasa","")) else ""
+                existing_hm = str(row.get("Harga Modal","")).replace("Rp","").replace(".","").strip() if pd.notna(row.get("Harga Modal","")) else ""
 
-                harga_jasa_input = st.text_input("Masukkan Harga Jasa (Rp):", value=existing_harga_jasa, key=f"harga_jasa_{nota}")
-                harga_modal_input = st.text_input("Masukkan Harga Modal (Rp) - tidak dikirim ke WA:", value=existing_harga_modal, key=f"harga_modal_{nota}")
+                harga_jasa_input = st.text_input("Masukkan Harga Jasa (Rp):", value=existing_hj, key=f"hj_{nota}")
+                harga_modal_input = st.text_input("Masukkan Harga Modal (Rp) - tidak dikirim ke WA:", value=existing_hm, key=f"hm_{nota}")
 
-                if st.button("✅ Simpan & Kirim WA", key=f"btn_kirim_{nota}"):
+                if st.button("✅ Simpan & Kirim WA", key=f"kirim_{nota}"):
                     try:
-                        hj_num = int(str(harga_jasa_input).replace(".","").replace(",","").strip()) if harga_jasa_input.strip() else 0
+                        hj_num = int(harga_jasa_input.replace(".","").replace(",","").strip()) if harga_jasa_input.strip() else 0
                     except:
                         hj_num = 0
                     try:
-                        hm_num = int(str(harga_modal_input).replace(".","").replace(",","").strip()) if harga_modal_input.strip() else 0
+                        hm_num = int(harga_modal_input.replace(".","").replace(",","").strip()) if harga_modal_input.strip() else 0
                     except:
                         hm_num = 0
+
                     hj_str = format_rp(hj_num) if hj_num else ""
                     hm_str = format_rp(hm_num) if hm_num else ""
 
@@ -234,60 +235,41 @@ def show():
                     ok = update_sheet_row_by_nota(SHEET_SERVIS, nota, updates)
                     if ok:
                         st.success(f"✅ Nota {nota} diperbarui di Google Sheet.")
+
+                        # Kirim WA
+                        harga_display = hj_str if hj_str else "(Cek Dulu)"
+                        msg = f"""Assalamualaikum {nama_pelanggan},
+
+Unit anda dengan nomor nota *{nota}* sudah selesai dan siap untuk diambil.
+
+Total Biaya Servis: *{harga_display}*
+
+Terima Kasih 🙏
+{cfg['nama_toko']}"""
+
+                        no_hp_clean = str(no_hp).replace("+", "").replace(" ", "").replace("-", "").strip()
+                        if no_hp_clean.startswith("0"):
+                            no_hp_clean = "62" + no_hp_clean[1:]
+                        elif not no_hp_clean.startswith("62"):
+                            no_hp_clean = "62" + no_hp_clean
+
+                        if no_hp_clean.isdigit() and len(no_hp_clean) >= 10:
+                            wa_link = f"https://wa.me/{no_hp_clean}?text={urllib.parse.quote(msg)}"
+                            st.markdown(f"[📲 Buka WhatsApp]({wa_link})", unsafe_allow_html=True)
+                            js = f"""
+                            <script>
+                                setTimeout(function(){{
+                                    window.open("{wa_link}", "_blank");
+                                }}, 800);
+                            </script>
+                            """
+                            st.markdown(js, unsafe_allow_html=True)
+                        else:
+                            st.warning("⚠️ Nomor HP pelanggan kosong atau tidak valid.")
                     else:
                         st.warning(f"⚠️ Gagal update Sheet untuk {nota}.")
 
-                    # WA
-                    # ✅ Kirim Pesan WA (Format Referensi)
-                    harga_display = hj_str if hj_str else "(Cek Dulu)"
-                    msg = f"""Assalamualaikum {nama_pelanggan},
-                    
-                    Unit anda dengan nomor nota *{nota}* sudah selesai dan siap untuk diambil.
-                    
-                    Total Biaya Servis: *{harga_display}*
-                    
-                    Terima Kasih 🙏
-                    {cfg['nama_toko']}"""
-                    
-                    # Format nomor HP
-                    no_hp_clean = str(no_hp).replace("+", "").replace(" ", "").replace("-", "").strip()
-                    if no_hp_clean.startswith("0"):
-                        no_hp_clean = "62" + no_hp_clean[1:]
-                    elif not no_hp_clean.startswith("62"):
-                        no_hp_clean = "62" + no_hp_clean
-                    
-                    if no_hp_clean:
-                        link = f"https://wa.me/{no_hp_clean}?text={requests.utils.quote(msg)}"
-                        st.success(f"✅ WA siap dibuka untuk {nama_pelanggan}")
-                        st.markdown(f"[📲 Buka WhatsApp]({link})", unsafe_allow_html=True)
-                    
-                        # 🔥 Auto-open tab baru ke WA
-                        js = f"""
-                        <script>
-                            setTimeout(function(){{
-                                window.open("{link}", "_blank");
-                            }}, 800);
-                        </script>
-                        """
-                        st.markdown(js, unsafe_allow_html=True)
-                        st.stop()
-                    else:
-                        st.warning("⚠️ Nomor HP kosong atau tidak valid")
-
-                    
-                        # buka otomatis tab baru (JS)
-                        js = f"""
-                        <script>
-                            setTimeout(function(){{
-                                window.open("{wa_link}", "_blank");
-                            }}, 800);
-                        </script>
-                        """
-                        st.markdown(js, unsafe_allow_html=True)
-                    else:
-                        st.warning("Nomor HP pelanggan kosong — tidak dapat membuka WhatsApp.")
-
-    # ========== TABEL TRANSAKSI BARANG ==========
+    # ========== TABEL TRANSAKSI ==========
     st.divider()
     st.subheader("📦 Data Transaksi Barang")
     if not df_transaksi_f.empty:
