@@ -287,115 +287,112 @@ def show():
 
         # ========== WA OTOMATIS (MODERN + HIDE + STATUS ICON) ==========
         # ========== WA OTOMATIS (HIDE SAMPAI DIKLIK) ==========
+        # ========== WA OTOMATIS (MODERN UI) ==========
     st.divider()
     st.subheader("📱 WhatsApp Otomatis Servis")
 
-    # Tombol untuk menampilkan daftar pelanggan
-    tampilkan = st.button("📋 Tampilkan Daftar Pelanggan")
+    st.markdown("""
+    <style>
+    .expander-header-custom {
+        background: linear-gradient(135deg, #1e293b, #0f172a);
+        border-radius: 8px;
+        padding: 8px 12px;
+        color: #f8fafc;
+        font-weight: 600;
+        margin-bottom: 6px;
+        box-shadow: 0 2px 5px rgba(0,0,0,0.25);
+    }
+    .expander-header-custom:hover {
+        background: linear-gradient(135deg, #334155, #1e293b);
+        transform: scale(1.01);
+        transition: all 0.15s ease-in-out;
+    }
+    .status-badge {
+        padding: 3px 8px;
+        border-radius: 6px;
+        font-size: 0.8rem;
+        color: white;
+        font-weight: 500;
+    }
+    .status-lunas { background: #16a34a; }
+    .status-proses { background: #3b82f6; }
+    .status-menunggu { background: #facc15; color:#000; }
+    .status-lain { background: #94a3b8; }
+    .btn-wa {
+        background: linear-gradient(90deg, #22c55e, #16a34a);
+        color: white !important;
+        text-align: center;
+        display: inline-block;
+        padding: 8px 16px;
+        border-radius: 8px;
+        font-weight: 600;
+        text-decoration: none;
+        transition: 0.2s;
+    }
+    .btn-wa:hover {
+        opacity: 0.9;
+        transform: scale(1.03);
+    }
+    </style>
+    """, unsafe_allow_html=True)
 
-    if tampilkan:
-        st.markdown("""
-        <style>
-        .expander-header-custom {
-            background: linear-gradient(135deg, #1e293b, #0f172a);
-            border-radius: 8px;
-            padding: 8px 12px;
-            color: #f8fafc;
-            font-weight: 600;
-            margin-bottom: 6px;
-            box-shadow: 0 2px 5px rgba(0,0,0,0.25);
-        }
-        .expander-header-custom:hover {
-            background: linear-gradient(135deg, #334155, #1e293b);
-            transform: scale(1.01);
-            transition: all 0.15s ease-in-out;
-        }
-        .status-badge {
-            padding: 3px 8px;
-            border-radius: 6px;
-            font-size: 0.8rem;
-            color: white;
-            font-weight: 500;
-        }
-        .status-lunas { background: #16a34a; }
-        .status-proses { background: #3b82f6; }
-        .status-menunggu { background: #facc15; color:#000; }
-        .status-lain { background: #94a3b8; }
-        .btn-wa {
-            background: linear-gradient(90deg, #22c55e, #16a34a);
-            color: white !important;
-            text-align: center;
-            display: inline-block;
-            padding: 8px 16px;
-            border-radius: 8px;
-            font-weight: 600;
-            text-decoration: none;
-            transition: 0.2s;
-        }
-        .btn-wa:hover {
-            opacity: 0.9;
-            transform: scale(1.03);
-        }
-        </style>
-        """, unsafe_allow_html=True)
+    if not df_servis_f.empty:
+        for idx, row in df_servis_f.iterrows():
+            nota = row.get("No Nota", "")
+            nama_pelanggan = row.get("Nama Pelanggan", "")
+            barang = row.get("Barang", "")
+            no_hp = row.get("No HP", "")
+            status_now = str(row.get("Status", "")).strip().title()
 
-        if not df_servis_f.empty:
-            for idx, row in df_servis_f.iterrows():
-                nota = row.get("No Nota", "")
-                nama_pelanggan = row.get("Nama Pelanggan", "")
-                barang = row.get("Barang", "")
-                no_hp = row.get("No HP", "")
-                status_now = str(row.get("Status", "")).strip().title()
+            # Tentukan ikon dan warna status
+            if "Lunas" in status_now:
+                status_icon, status_class = "✅", "status-lunas"
+            elif "Proses" in status_now:
+                status_icon, status_class = "🔧", "status-proses"
+            elif "Menunggu" in status_now or "Belum" in status_now:
+                status_icon, status_class = "🕓", "status-menunggu"
+            else:
+                status_icon, status_class = "❔", "status-lain"
 
-                # Tentukan ikon dan warna status
-                if "Lunas" in status_now:
-                    status_icon, status_class = "✅", "status-lunas"
-                elif "Proses" in status_now:
-                    status_icon, status_class = "🔧", "status-proses"
-                elif "Menunggu" in status_now or "Belum" in status_now:
-                    status_icon, status_class = "🕓", "status-menunggu"
-                else:
-                    status_icon, status_class = "❔", "status-lain"
+            existing_hj = str(row.get("Harga Jasa","")).replace("Rp","").replace(".","").strip() if pd.notna(row.get("Harga Jasa","")) else ""
+            existing_hm = str(row.get("Harga Modal","")).replace("Rp","").replace(".","").strip() if pd.notna(row.get("Harga Modal","")) else ""
 
-                existing_hj = str(row.get("Harga Jasa","")).replace("Rp","").replace(".","").strip() if pd.notna(row.get("Harga Jasa","")) else ""
-                existing_hm = str(row.get("Harga Modal","")).replace("Rp","").replace(".","").strip() if pd.notna(row.get("Harga Modal","")) else ""
+            header_html = f"""
+            <div class='expander-header-custom'>
+                {nama_pelanggan} — <span style='color:#cbd5e1;'>{barang}</span>
+                <span style='float:right;'>
+                    <span class='status-badge {status_class}'>{status_icon} {status_now}</span>
+                </span>
+            </div>
+            """
 
-                header_html = f"""
-                <div class='expander-header-custom'>
-                    {nama_pelanggan} — <span style='color:#cbd5e1;'>{barang}</span>
-                    <span style='float:right;'>
-                        <span class='status-badge {status_class}'>{status_icon} {status_now}</span>
-                    </span>
-                </div>
-                """
+            with st.expander(header_html, expanded=False):
+                col1, col2 = st.columns(2)
+                with col1:
+                    harga_jasa_input = st.text_input("💰 Harga Jasa (Rp):", value=existing_hj, key=f"hj_{nota}")
+                with col2:
+                    harga_modal_input = st.text_input("📦 Harga Modal (Rp):", value=existing_hm, key=f"hm_{nota}")
 
-                with st.expander(header_html, expanded=False):
-                    col1, col2 = st.columns(2)
-                    with col1:
-                        harga_jasa_input = st.text_input("💰 Harga Jasa (Rp):", value=existing_hj, key=f"hj_{nota}")
-                    with col2:
-                        harga_modal_input = st.text_input("📦 Harga Modal (Rp):", value=existing_hm, key=f"hm_{nota}")
+                kirim = st.button("✅ Simpan & Kirim WA", key=f"kirim_{nota}")
+                if kirim:
+                    try:
+                        hj_num = int(harga_jasa_input.replace(".","").replace(",","").strip()) if harga_jasa_input.strip() else 0
+                    except:
+                        hj_num = 0
+                    try:
+                        hm_num = int(harga_modal_input.replace(".","").replace(",","").strip()) if harga_modal_input.strip() else 0
+                    except:
+                        hm_num = 0
 
-                    kirim = st.button("✅ Simpan & Kirim WA", key=f"kirim_{nota}")
-                    if kirim:
-                        try:
-                            hj_num = int(harga_jasa_input.replace(".","").replace(",","").strip()) if harga_jasa_input.strip() else 0
-                        except:
-                            hj_num = 0
-                        try:
-                            hm_num = int(harga_modal_input.replace(".","").replace(",","").strip()) if harga_modal_input.strip() else 0
-                        except:
-                            hm_num = 0
+                    hj_str = format_rp(hj_num) if hj_num else ""
+                    hm_str = format_rp(hm_num) if hm_num else ""
 
-                        hj_str = format_rp(hj_num) if hj_num else ""
-                        hm_str = format_rp(hm_num) if hm_num else ""
+                    updates = {"Harga Jasa": hj_str, "Harga Modal": hm_str, "Status": "Lunas"}
+                    ok = update_sheet_row_by_nota(SHEET_SERVIS, nota, updates)
+                    if ok:
+                        st.success(f"✅ Nota {nota} diperbarui di Google Sheet.")
 
-                        updates = {"Harga Jasa": hj_str, "Harga Modal": hm_str, "Status": "Lunas"}
-                        ok = update_sheet_row_by_nota(SHEET_SERVIS, nota, updates)
-                        if ok:
-                            st.success(f"✅ Nota {nota} diperbarui di Google Sheet.")
-
-                            msg = f"""Assalamualaikum {nama_pelanggan},
+                        msg = f"""Assalamualaikum {nama_pelanggan},
 
 Unit anda dengan nomor nota *{nota}* sudah selesai dan siap untuk diambil.
 
@@ -404,21 +401,19 @@ Total Biaya Servis: *{hj_str if hj_str else '(Cek Dulu)'}*
 Terima Kasih 🙏
 {cfg['nama_toko']}"""
 
-                            no_hp_clean = str(no_hp).replace("+","").replace(" ","").replace("-","").strip()
-                            if no_hp_clean.startswith("0"):
-                                no_hp_clean = "62" + no_hp_clean[1:]
-                            elif not no_hp_clean.startswith("62"):
-                                no_hp_clean = "62" + no_hp_clean
+                        no_hp_clean = str(no_hp).replace("+","").replace(" ","").replace("-","").strip()
+                        if no_hp_clean.startswith("0"):
+                            no_hp_clean = "62" + no_hp_clean[1:]
+                        elif not no_hp_clean.startswith("62"):
+                            no_hp_clean = "62" + no_hp_clean
 
-                            if no_hp_clean.isdigit() and len(no_hp_clean) >= 10:
-                                wa_link = f"https://wa.me/{no_hp_clean}?text={urllib.parse.quote(msg)}"
-                                st.markdown(f'<a class="btn-wa" href="{wa_link}" target="_blank">📲 Kirim ke WhatsApp</a>', unsafe_allow_html=True)
-                            else:
-                                st.warning("⚠️ Nomor HP pelanggan kosong atau tidak valid.")
-        else:
-            st.info("Tidak ada data servis untuk periode ini.")
+                        if no_hp_clean.isdigit() and len(no_hp_clean) >= 10:
+                            wa_link = f"https://wa.me/{no_hp_clean}?text={urllib.parse.quote(msg)}"
+                            st.markdown(f'<a class="btn-wa" href="{wa_link}" target="_blank">📲 Kirim ke WhatsApp</a>', unsafe_allow_html=True)
+                        else:
+                            st.warning("⚠️ Nomor HP pelanggan kosong atau tidak valid.")
     else:
-        st.markdown("<small>Daftar pelanggan disembunyikan. Klik tombol di atas untuk menampilkan.</small>", unsafe_allow_html=True)
+        st.info("Tidak ada data servis untuk periode ini.")
 
 
 
