@@ -105,7 +105,7 @@ def format_rp(n):
 # ------------------- MAIN -------------------
 def show():
     cfg = load_config()
-    st.title("📊 Laporan Servis & Barang (Sinkron No Nota dari Google Sheet)")
+    st.title("📊 Laporan Servis & Barang Capslock Computer")
 
     # ========== LOAD DATA ==========
     df_servis = read_sheet(SHEET_SERVIS)
