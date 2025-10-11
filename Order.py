@@ -1,4 +1,4 @@
-# ===================== ORDER.PY (v5.8 FINAL - PREFIX SRV & TRX) =====================
+# ===================== ORDER.PY (v5.9 FINAL - PREFIX SRV & TRX + AUTO KURANG STOK) =====================
 import streamlit as st
 import pandas as pd
 import datetime
@@ -76,7 +76,6 @@ def get_next_nota_from_sheet(sheet_name, prefix):
         if last_nota and last_nota.startswith(prefix):
             num = int(last_nota.replace(prefix, ""))
         else:
-            # Jika belum pernah ada nota dengan prefix ini
             num = 0
         return f"{prefix}{num+1:07d}"
     except Exception as e:
@@ -247,6 +246,22 @@ Terima Kasih 🙏
                     "Jenis Transaksi": jenis_transaksi
                 }
                 append_to_sheet(SHEET_TRANSAKSI, transaksi_data)
+
+                # 🔥 Tambahan: kurangi stok otomatis
+                try:
+                    ws_stok = get_worksheet(SHEET_STOK)
+                    stok_data = ws_stok.get_all_records()
+                    for i, row in enumerate(stok_data, start=2):
+                        if str(row.get("nama_barang", "")).strip() == str(nama_barang).strip():
+                            stok_baru = int(row.get("qty", 0)) - int(qty)
+                            if stok_baru < 0:
+                                stok_baru = 0
+                            col_index = list(row.keys()).index("qty") + 1
+                            ws_stok.update_cell(i, col_index, stok_baru)
+                            break
+                except Exception as e:
+                    st.warning(f"⚠️ Gagal update stok: {e}")
+
                 st.success(f"✅ Transaksi {nama_barang} tersimpan! Untung: Rp {untung:,.0f}".replace(",", "."))
                 msg = f"""NOTA PENJUALAN
 
