@@ -1,4 +1,4 @@
-# =================== REPORT.PY (v5.5 FINAL FIX FILTER PER HARI + BULAN) ===================
+# =================== REPORT.PY (v5.6 FINAL FIX FILTER PER HARI + BULAN LENGKAP) ===================
 import streamlit as st
 import pandas as pd
 import datetime
@@ -148,17 +148,22 @@ def show():
         tanggal_filter = st.sidebar.date_input("Tanggal:", value=datetime.date.today())
         df_servis_f = df_servis[df_servis["Tanggal Masuk"] == tanggal_filter] if not df_servis.empty else pd.DataFrame()
         df_transaksi_f = df_transaksi[df_transaksi["Tanggal"] == tanggal_filter] if not df_transaksi.empty else pd.DataFrame()
+
     else:
+        # -------------- DAFTAR BULAN 1 - 12 TETAP MUNCUL --------------
+        tahun_ini = datetime.date.today().year
+        daftar_bulan = [f"{tahun_ini}-{str(i).zfill(2)}" for i in range(1, 13)]
+
         bulan_servis = set()
         bulan_transaksi = set()
-
         if not df_servis.empty and "Tanggal Masuk" in df_servis.columns:
             bulan_servis = set(df_servis["Tanggal Masuk"].dropna().map(lambda d: d.strftime("%Y-%m")))
         if not df_transaksi.empty and "Tanggal" in df_transaksi.columns:
             bulan_transaksi = set(df_transaksi["Tanggal"].dropna().map(lambda d: d.strftime("%Y-%m")))
 
-        bulan_unik = sorted(bulan_servis | bulan_transaksi)
-        pilih_bulan = st.sidebar.selectbox("Pilih Bulan:", ["Semua Bulan"] + bulan_unik, index=0)
+        semua_bulan = sorted(set(daftar_bulan) | bulan_servis | bulan_transaksi)
+
+        pilih_bulan = st.sidebar.selectbox("Pilih Bulan:", ["Semua Bulan"] + semua_bulan, index=0)
 
         if pilih_bulan == "Semua Bulan":
             df_servis_f = df_servis.copy()
