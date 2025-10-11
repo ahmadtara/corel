@@ -192,7 +192,7 @@ def show():
                 df_transaksi_f = df_transaksi[df_transaksi["Tanggal"].apply(lambda d: pd.notna(d) and d.year == tahun and d.month == bulan)]
             else:
                 df_transaksi_f = pd.DataFrame()
-            if not df_transaksi.empty and "Tanggal" in df_transaksi.columns:
+            if not df_pengeluaran.empty and "Tanggal" in df_pengeluaran.columns:
                 df_pengeluaran_f = df_pengeluaran[df_pengeluaran["Tanggal"].apply(lambda d: pd.notna(d) and d.year == tahun and d.month == bulan)]
             else:
                 df_pengeluaran_f = pd.DataFrame()
@@ -268,13 +268,13 @@ def show():
         </div>
     </div>
 """.format(
-    servis=f"{total_servis:,.0f}".replace(",", "."),
-    barang=f"{total_barang:,.0f}".replace(",", "."),
-    pengeluaran=f"{total_pengeluaran:,.0f}".replace(",", "."),
-    total=f"{total_gabungan:,.0f}".replace(",", ".")
-), unsafe_allow_html=True)
+        servis=f"{total_servis:,.0f}".replace(",", "."),
+        barang=f"{total_barang:,.0f}".replace(",", "."),
+        pengeluaran=f"{total_pengeluaran:,.0f}".replace(",", "."),
+        total=f"{total_gabungan:,.0f}".replace(",", ".")
+    ), unsafe_allow_html=True)
 
-st.caption(f"Potensi Laba Stok: Rp {potensi_laba:,.0f}".replace(",", "."))
+    st.caption(f"Potensi Laba Stok: Rp {potensi_laba:,.0f}".replace(",", "."))
 
     st.divider()
 
