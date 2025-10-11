@@ -6,6 +6,7 @@ import gspread
 from oauth2client.service_account import ServiceAccountCredentials
 import json
 import requests
+import urllib.parse
 
 # ================= CONFIG ==================
 SPREADSHEET_ID = "1OsnO1xQFniBtEFCvGksR2KKrPt-9idE-w6-poM-wXKU"
@@ -176,9 +177,9 @@ def show():
 
             msg = f"""*NOTA ELEKTRONIK*
 
-🛠 ```Capslock Komputer```
+🛠 ```{cfg['nama_toko']}```
 📍 {cfg['alamat']}
-HP : 📞 085172174759
+HP : 📞 {cfg['telepon']}
 
 =======================
 *No Nota* : {nota}
@@ -195,9 +196,10 @@ Kelengkapan : {kelengkapan}
 _Dapatkan Promo Mahasiswa_
 =======================
 
-Best Regard
+Best Regard,
 Admin {cfg['nama_toko']}
-Terima Kasih 🙏"""
+Terima Kasih 🙏
+"""
 
             no_hp_clean = str(no_hp).replace("+", "").replace(" ", "").replace("-", "").strip()
             if no_hp_clean.startswith("0"):
@@ -205,6 +207,7 @@ Terima Kasih 🙏"""
             elif not no_hp_clean.startswith("62"):
                 no_hp_clean = "62" + no_hp_clean
 
+            encoded_msg = urllib.parse.quote(msg.encode("utf-8"))
             wa_link = f"https://wa.me/{no_hp_clean}?text={requests.utils.quote(msg)}"
             st.markdown(f"[📲 KIRIM NOTA SERVIS VIA WHATSAPP]({wa_link})", unsafe_allow_html=True)
 
@@ -289,6 +292,7 @@ Terima kasih sudah berbelanja!
                     hp = "62" + hp[1:]
                 elif not hp.startswith("62"):
                     hp = "62" + hp
+                encoded_msg = urllib.parse.quote(msg.encode("utf-8"))
                 wa_link = f"https://wa.me/{hp}?text={requests.utils.quote(msg)}"
                 st.markdown(f"[📲 KIRIM NOTA VIA WHATSAPP]({wa_link})", unsafe_allow_html=True)
 
