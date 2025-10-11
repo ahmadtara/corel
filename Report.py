@@ -1,4 +1,4 @@
-# report.py (v5.7) - Tambah pemisahan Cash / Transfer & input Jenis Transaksi saat Kirim WA
+# report.py (v5.7 clean) - Laporan Servis & Barang (tanpa fitur input harga & WA)
 import streamlit as st
 import pandas as pd
 import datetime
@@ -43,8 +43,12 @@ def read_sheet(sheet_name):
         st.warning(f"Gagal membaca sheet {sheet_name}: {e}")
         return pd.DataFrame()
 
-# ------------------- UPDATE SHEET -------------------
+# ------------------- UPDATE SHEET (dipakai juga pada pelanggan.py) -------------------
 def update_sheet_row_by_nota(sheet_name, nota, updates: dict):
+    """
+    Update kolom di baris yang mengandung `nota`. Mencari nota langsung di seluruh sheet,
+    fallback mencari di kolom header 'No Nota'.
+    """
     try:
         ws = get_worksheet(sheet_name)
         try:
@@ -330,82 +334,6 @@ def show():
         )
     else:
         st.info("Tidak ada data servis untuk periode ini.")
-
-    # ========== WA OTOMATIS (INPUT TAMBAHAN: JENIS TRANSAKSI) ==========
-    st.divider()
-    st.subheader("📱 Klik Pelanggan Untuk Input Harga & Kirim WA Otomatis")
-    if not df_servis_f.empty:
-        for idx, row in df_servis_f.iterrows():
-            nota = row.get("No Nota", "")
-            nama_pelanggan = row.get("Nama Pelanggan", "")
-            barang = row.get("Barang", "")
-            no_hp = row.get("No HP", "")
-            status_now = row.get("Status", "")
-
-            with st.expander(f"{nama_pelanggan} - {barang} ({status_now})"):
-                existing_hj = str(row.get("Harga Jasa","")).replace("Rp","").replace(".","").strip() if pd.notna(row.get("Harga Jasa","")) else ""
-                existing_hm = str(row.get("Harga Modal","")).replace("Rp","").replace(".","").strip() if pd.notna(row.get("Harga Modal","")) else ""
-                existing_jenis = str(row.get("Jenis Transaksi","")).strip() if pd.notna(row.get("Jenis Transaksi","")) else "Cash"
-
-                harga_jasa_input = st.text_input("Masukkan Harga Jasa (Rp):", value=existing_hj, key=f"hj_{nota}")
-                harga_modal_input = st.text_input("Masukkan Harga Modal (Rp) - tidak dikirim ke WA:", value=existing_hm, key=f"hm_{nota}")
-
-                # Pilihan Jenis Transaksi (Cash / Transfer)
-                jenis_transaksi = st.radio("Pilih Jenis Transaksi:", ["Cash", "Transfer"], index=0 if existing_jenis.lower()!="transfer" else 1, key=f"jenis_{nota}", horizontal=True)
-
-                if st.button("✅ Simpan & Kirim WA", key=f"kirim_{nota}"):
-                    try:
-                        hj_num = int(harga_jasa_input.replace(".","").replace(",","").strip()) if harga_jasa_input.strip() else 0
-                    except:
-                        hj_num = 0
-                    try:
-                        hm_num = int(harga_modal_input.replace(".","").replace(",","").strip()) if harga_modal_input.strip() else 0
-                    except:
-                        hm_num = 0
-
-                    hj_str = format_rp(hj_num) if hj_num else ""
-                    hm_str = format_rp(hm_num) if hm_num else ""
-
-                    updates = {
-                        "Harga Jasa": hj_str,
-                        "Harga Modal": hm_str,
-                        "Status": "Lunas",
-                        "Jenis Transaksi": jenis_transaksi
-                    }
-                    ok = update_sheet_row_by_nota(SHEET_SERVIS, nota, updates)
-                    if ok:
-                        st.success(f"✅ Nota {nota} diperbarui di Google Sheet.")
-
-                        msg = f"""Assalamualaikum {nama_pelanggan},
-
-Unit anda dengan nomor nota *{nota}* sudah selesai dan siap untuk diambil.
-
-Total Biaya Servis: *{hj_str if hj_str else '(Cek Dulu)'}*
-
-Pembayaran: *{jenis_transaksi}*
-
-Terima Kasih 🙏
-{cfg['nama_toko']}"""
-
-                        no_hp_clean = str(no_hp).replace("+","").replace(" ","").replace("-","").strip()
-                        if no_hp_clean.startswith("0"):
-                            no_hp_clean = "62" + no_hp_clean[1:]
-                        elif not no_hp_clean.startswith("62"):
-                            no_hp_clean = "62" + no_hp_clean
-
-                        if no_hp_clean.isdigit() and len(no_hp_clean) >= 10:
-                            wa_link = f"https://wa.me/{no_hp_clean}?text={urllib.parse.quote(msg)}"
-                            st.markdown(f"[📲 Buka WhatsApp]({wa_link})", unsafe_allow_html=True)
-                            js = f"""
-                            <script>
-                                setTimeout(function(){{
-                                    window.open("{wa_link}", "_blank");
-                                }}, 800);
-                            </script>
-                            """
-                            st.markdown(js, unsafe_allow_html=True)
-                        else:
-                            st.warning("⚠️ Nomor HP pelanggan kosong atau tidak valid.")
 
     # ========== TABEL TRANSAKSI ==========
     st.divider()
