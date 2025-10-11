@@ -1,12 +1,18 @@
+# ==================== ADMIN.PY (v2.1 - Notif Telegram Stok Menipis) ====================
 import streamlit as st
 import pandas as pd
 import gspread
 from oauth2client.service_account import ServiceAccountCredentials
 import os
+import requests  # <--- untuk kirim pesan ke Telegram
 
 # ==================== KONFIG =====================
 SPREADSHEET_ID = "1OsnO1xQFniBtEFCvGksR2KKrPt-9idE-w6-poM-wXKU"
 SHEET_NAME = "Stok"
+
+# Telegram bot config
+TELEGRAM_TOKEN = "7656007924:AAGi1it2M7jE0Sen28myiPhEmYPd1-jsI_Q"
+TELEGRAM_CHAT_ID = "6122753506"
 
 # ==================== AUTH GOOGLE =====================
 def authenticate_google():
@@ -35,6 +41,39 @@ def read_sheet(sheet_name):
     ws = get_worksheet(sheet_name)
     df = pd.DataFrame(ws.get_all_records())
     return df
+
+# ==================== TELEGRAM OPS =====================
+def send_telegram_message(message: str):
+    """Kirim pesan ke Telegram."""
+    url = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendMessage"
+    payload = {
+        "chat_id": TELEGRAM_CHAT_ID,
+        "text": message,
+        "parse_mode": "HTML"
+    }
+    try:
+        requests.post(url, json=payload, timeout=10)
+    except Exception as e:
+        st.warning(f"Gagal kirim notifikasi Telegram: {e}")
+
+# ==================== CEK STOK DAN KIRIM NOTIF =====================
+def check_and_notify_stock(df):
+    """Kirim notifikasi kalau stok kritis (1) atau habis (0)."""
+    for _, row in df.iterrows():
+        nama = row.get("nama_barang", "")
+        qty = row.get("qty", 0)
+
+        if str(qty).isdigit():
+            qty = int(qty)
+        else:
+            continue
+
+        if qty == 1:
+            message = f"⚠️ <b>Peringatan!</b>\nStok barang <b>{nama}</b> tinggal <b>1</b>.\nSegera siapkan restock."
+            send_telegram_message(message)
+        elif qty == 0:
+            message = f"🚨 <b>Stok Habis!</b>\nBarang <b>{nama}</b> sudah <b>kosong</b>.\nSegera lakukan restock!"
+            send_telegram_message(message)
 
 # ==================== PAGE =====================
 def show():
@@ -75,6 +114,9 @@ def show():
             df["modal"] = df["modal"].apply(lambda x: f"Rp {x:,.0f}".replace(",", "."))
             df["harga_jual"] = df["harga_jual"].apply(lambda x: f"Rp {x:,.0f}".replace(",", "."))
             st.dataframe(df, use_container_width=True)
+
+            # 🔔 Cek stok kritis dan kirim notifikasi
+            check_and_notify_stock(df)
         else:
             st.info("Belum ada data barang di Sheet 'Stok'.")
     except Exception as e:
