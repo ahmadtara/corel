@@ -174,11 +174,11 @@ def show():
 
             save_local_data(df)
 
-            msg = f"""NOTA ELEKTRONIK
+            msg = f"""*NOTA ELEKTRONIK*
 
-💻 *{cfg['nama_toko']}* 💻
-{cfg['alamat']}
-HP : {cfg['telepon']}
+🛠 ```Capslock Komputer```
+📍 {cfg['alamat']}
+HP : 📞 085172174759
 
 =======================
 *No Nota* : {nota}
@@ -186,13 +186,13 @@ HP : {cfg['telepon']}
 *Tanggal Masuk* : {tanggal_masuk_str}
 *Estimasi Selesai* : {estimasi_selesai}
 =======================
-{barang}
-{kerusakan}
-{kelengkapan}
+Barang : {barang}
+Kerusakan : {kerusakan}
+Kelengkapan : {kelengkapan}
 =======================
 *Harga* : (Cek Dulu)
 *Status* : Cek Dulu
-Dapatkan Promo Mahasiswa
+_Dapatkan Promo Mahasiswa_
 =======================
 
 Best Regard
