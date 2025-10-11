@@ -16,10 +16,10 @@ with st.sidebar:
         "📱 Capslock Komputer",
         [
             "🧾 Order",
+            "✅ Konfirmasi Pelanggan",  # ✅ menu baru
             "💸 Pengeluaran",
             "📈 Report",
             "📦 Admin",
-            "✅ Konfirmasi Pelanggan",  # ✅ menu baru
             "⚙️ Setting"
         ],
         icons=[
@@ -39,11 +39,11 @@ if selected == "🧾 Order":
     Order.show()
 elif selected == "💸 Pengeluaran":
     Expense.show()
+elif selected == "✅ Konfirmasi Pelanggan":  # ✅ panggil Pelanggan.py
+    Pelanggan.show()
 elif selected == "📈 Report":
     Report.show()
 elif selected == "📦 Admin":
     Admin.show()
-elif selected == "✅ Konfirmasi Pelanggan":  # ✅ panggil Pelanggan.py
-    Pelanggan.show()
 elif selected == "⚙️ Setting":
     Setting.show()
