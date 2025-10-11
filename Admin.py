@@ -5,7 +5,7 @@ from oauth2client.service_account import ServiceAccountCredentials
 import os
 
 # ==================== KONFIG =====================
-SPREADSHEET_ID = "1uTVKVIuhqSiGU8vqE0cVGWdsd7cqSzTA"  # ID spreadsheet kamu
+SPREADSHEET_ID = "1zrgkTKGcq6_fdGRBkHYj5Km8nuyOdM6d3Wjetq8ucpk" # ID spreadsheet kamu
 SHEET_NAME = "Stok"
 
 # ==================== AUTH GOOGLE =====================
