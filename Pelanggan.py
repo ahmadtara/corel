@@ -1,4 +1,4 @@
-# pelanggan.py (v1.1) - +Filter per Hari & Bulan
+# pelanggan.py (v1.2) - Fix Filter Hari/Bulan pakai kolom 'Tanggal Masuk'
 import streamlit as st
 import pandas as pd
 import datetime
@@ -99,7 +99,7 @@ def show():
         return
 
     # Pastikan kolom penting ada
-    for col in ["Tanggal","No Nota","Nama Pelanggan","No HP","Barang","Status","Harga Jasa","Harga Modal","Jenis Transaksi"]:
+    for col in ["Tanggal Masuk","No Nota","Nama Pelanggan","No HP","Barang","Status","Harga Jasa","Harga Modal","Jenis Transaksi"]:
         if col not in df.columns:
             df[col] = ""
 
@@ -108,14 +108,15 @@ def show():
     today = datetime.date.today()
     filter_tipe = st.radio("Pilih Jenis Filter:", ["Semua", "Per Hari", "Per Bulan"], horizontal=True)
 
+    # Parsing tanggal dari kolom "Tanggal Masuk"
+    df["Tanggal_parsed"] = pd.to_datetime(df["Tanggal Masuk"], errors="coerce", dayfirst=True)
+
     if filter_tipe == "Per Hari":
         tanggal_pilih = st.date_input("Pilih Tanggal:", today)
-        df["Tanggal_parsed"] = pd.to_datetime(df["Tanggal"], errors="coerce").dt.date
-        df = df[df["Tanggal_parsed"] == tanggal_pilih]
+        df = df[df["Tanggal_parsed"].dt.date == tanggal_pilih]
     elif filter_tipe == "Per Bulan":
         tahun = st.number_input("Tahun", value=today.year, step=1)
         bulan = st.number_input("Bulan (1–12)", value=today.month, min_value=1, max_value=12, step=1)
-        df["Tanggal_parsed"] = pd.to_datetime(df["Tanggal"], errors="coerce")
         df = df[(df["Tanggal_parsed"].dt.year == tahun) & (df["Tanggal_parsed"].dt.month == bulan)]
 
     # ---------------- PENCARIAN ----------------
