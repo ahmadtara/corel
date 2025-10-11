@@ -1,4 +1,4 @@
-# report.py (v5.7 clean) - Laporan Servis & Barang (tanpa fitur input harga & WA)
+# report.py (v5.8) - Laporan Servis & Barang (sinkron waktu internet, tanpa hilang fitur)
 import streamlit as st
 import pandas as pd
 import datetime
@@ -6,7 +6,6 @@ import json
 import os
 import gspread
 from oauth2client.service_account import ServiceAccountCredentials
-import urllib.parse
 import requests
 
 # ------------------- CONFIG -------------------
@@ -43,12 +42,9 @@ def read_sheet(sheet_name):
         st.warning(f"Gagal membaca sheet {sheet_name}: {e}")
         return pd.DataFrame()
 
-# ------------------- UPDATE SHEET (dipakai juga pada pelanggan.py) -------------------
+# ------------------- UPDATE SHEET -------------------
 def update_sheet_row_by_nota(sheet_name, nota, updates: dict):
-    """
-    Update kolom di baris yang mengandung `nota`. Mencari nota langsung di seluruh sheet,
-    fallback mencari di kolom header 'No Nota'.
-    """
+    """Update kolom di baris yang mengandung `nota`."""
     try:
         ws = get_worksheet(sheet_name)
         try:
@@ -106,10 +102,27 @@ def format_rp(n):
     except:
         return str(n)
 
+# ------------------- INTERNET DATE -------------------
+def get_internet_date():
+    """Ambil tanggal dari server waktu internet (Asia/Jakarta)."""
+    try:
+        resp = requests.get("https://worldtimeapi.org/api/timezone/Asia/Jakarta", timeout=5)
+        if resp.status_code == 200:
+            data = resp.json()
+            dt = datetime.datetime.fromisoformat(data["datetime"].replace("Z", "+00:00"))
+            return dt.date()
+    except Exception:
+        pass
+    # fallback: jika gagal, gunakan waktu lokal server
+    return datetime.date.today()
+
 # ------------------- MAIN -------------------
 def show():
     cfg = load_config()
     st.title("📊 Laporan Servis & Barang Capslock Computer")
+
+    # gunakan tanggal internet
+    today = get_internet_date()
 
     # ========== LOAD DATA ==========
     df_servis = read_sheet(SHEET_SERVIS)
@@ -170,12 +183,12 @@ def show():
     filter_mode = st.sidebar.radio("Mode Filter:", ["Per Hari", "Per Bulan"], index=0)
 
     if filter_mode == "Per Hari":
-        tanggal_filter = st.sidebar.date_input("Tanggal:", value=datetime.date.today())
+        tanggal_filter = st.sidebar.date_input("Tanggal:", value=today)
         df_servis_f = df_servis[df_servis["Tanggal Masuk"] == tanggal_filter] if not df_servis.empty else pd.DataFrame()
         df_transaksi_f = df_transaksi[df_transaksi["Tanggal"] == tanggal_filter] if not df_transaksi.empty else pd.DataFrame()
         df_pengeluaran_f = df_pengeluaran[df_pengeluaran["Tanggal"] == tanggal_filter] if not df_pengeluaran.empty else pd.DataFrame()
     else:
-        tahun_ini = datetime.date.today().year
+        tahun_ini = today.year
         daftar_bulan = [f"{tahun_ini}-{str(i).zfill(2)}" for i in range(1, 13)]
 
         bulan_servis = set()
@@ -186,7 +199,6 @@ def show():
             bulan_transaksi = set(df_transaksi["Tanggal"].dropna().map(lambda d: d.strftime("%Y-%m")))
 
         semua_bulan = sorted(set(daftar_bulan) | bulan_servis | bulan_transaksi)
-
         pilih_bulan = st.sidebar.selectbox("Pilih Bulan:", ["Semua Bulan"] + semua_bulan, index=0)
 
         if pilih_bulan == "Semua Bulan":
@@ -195,18 +207,21 @@ def show():
             df_pengeluaran_f = df_pengeluaran.copy()
         else:
             tahun, bulan = map(int, pilih_bulan.split("-"))
-            if not df_servis.empty and "Tanggal Masuk" in df_servis.columns:
+            if not df_servis.empty:
                 df_servis_f = df_servis[df_servis["Tanggal Masuk"].apply(lambda d: pd.notna(d) and d.year == tahun and d.month == bulan)]
             else:
                 df_servis_f = pd.DataFrame()
-            if not df_transaksi.empty and "Tanggal" in df_transaksi.columns:
+            if not df_transaksi.empty:
                 df_transaksi_f = df_transaksi[df_transaksi["Tanggal"].apply(lambda d: pd.notna(d) and d.year == tahun and d.month == bulan)]
             else:
                 df_transaksi_f = pd.DataFrame()
-            if not df_pengeluaran.empty and "Tanggal" in df_pengeluaran.columns:
+            if not df_pengeluaran.empty:
                 df_pengeluaran_f = df_pengeluaran[df_pengeluaran["Tanggal"].apply(lambda d: pd.notna(d) and d.year == tahun and d.month == bulan)]
             else:
                 df_pengeluaran_f = pd.DataFrame()
+
+    # ================== lanjut (kode bawah sama persis ==================
+
 
     # ========== HITUNG LABA (PER JENIS) ==========
     # default jika dataframe kosong
