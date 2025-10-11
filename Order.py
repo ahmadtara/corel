@@ -1,4 +1,4 @@
-# ===================== ORDER.PY (v6.0 - REALTIME WIB VIA API + PREFIX SRV/TRX + AUTO KURANG STOK) =====================
+# ===================== ORDER.PY (v7.0 - CACHED WIB + REFRESH + AUTO STOK) =====================
 import streamlit as st
 import pandas as pd
 import datetime
@@ -45,8 +45,9 @@ def load_config():
     }
 
 # =============== REALTIME WIB ===============
-def get_internet_date():
-    """Ambil tanggal real dari internet (Asia/Jakarta), fallback ke lokal jika gagal."""
+@st.cache_data(ttl=300)
+def get_cached_internet_date():
+    """Ambil tanggal real dari internet (Asia/Jakarta), cache 5 menit."""
     try:
         res = requests.get("https://worldtimeapi.org/api/timezone/Asia/Jakarta", timeout=5)
         if res.status_code == 200:
@@ -99,7 +100,9 @@ def append_to_sheet(sheet_name, data: dict):
     row = [data.get(h, "") for h in headers]
     ws.append_row(row, value_input_option="USER_ENTERED")
 
-def read_sheet(sheet_name):
+@st.cache_data(ttl=120)
+def read_sheet_cached(sheet_name):
+    """Cache pembacaan sheet selama 2 menit untuk mempercepat load."""
     ws = get_worksheet(sheet_name)
     return pd.DataFrame(ws.get_all_records())
 
@@ -133,8 +136,8 @@ def show():
     # --------------------------------------
     with tab1:
         with st.form("form_service"):
-            tanggal_masuk = st.date_input("Tanggal Masuk", value=get_internet_date())
-            estimasi = st.date_input("Estimasi Selesai", value=get_internet_date() + datetime.timedelta(days=3))
+            tanggal_masuk = st.date_input("Tanggal Masuk", value=get_cached_internet_date())
+            estimasi = st.date_input("Estimasi Selesai", value=get_cached_internet_date() + datetime.timedelta(days=3))
             nama = st.text_input("Nama Pelanggan", placeholder="King Dion")
             no_hp = st.text_input("Nomor WhatsApp", placeholder="081234567890")
             barang = st.text_input("Nama Barang", placeholder="Laptop ASUS A409")
@@ -218,8 +221,14 @@ Terima Kasih 🙏
     with tab2:
         st.subheader("🧰 Penjualan Accessories / Sparepart")
 
+        col_refresh, _ = st.columns([1, 3])
+        with col_refresh:
+            if st.button("🔄 Refresh Data Stok"):
+                st.cache_data.clear()
+                st.experimental_rerun()
+
         try:
-            stok_df = read_sheet(SHEET_STOK)
+            stok_df = read_sheet_cached(SHEET_STOK)
         except:
             stok_df = pd.DataFrame(columns=["nama_barang", "modal", "harga_jual", "qty"])
 
@@ -237,7 +246,7 @@ Terima Kasih 🙏
             jenis_transaksi = st.radio("Jenis Transaksi:", ["Cash", "Transfer"], horizontal=True, key="jenis_barang_stok")
             nama_pembeli = st.text_input("Nama Pembeli (opsional)")
             no_hp_pembeli = st.text_input("Nomor WhatsApp Pembeli (opsional)")
-            tanggal = get_internet_date()
+            tanggal = get_cached_internet_date()
 
             if st.button("💾 Simpan Transaksi dari Stok"):
                 nota = get_next_nota_from_sheet(SHEET_TRANSAKSI, "TRX/")
@@ -304,7 +313,7 @@ Terima kasih sudah berbelanja!
             jenis_transaksi = st.radio("Jenis Transaksi:", ["Cash", "Transfer"], horizontal=True, key="jenis_barang_manual")
             nama_pembeli_manual = st.text_input("Nama Pembeli (opsional)")
             no_hp_pembeli_manual = st.text_input("Nomor WhatsApp Pembeli (opsional)")
-            tanggal_manual = get_internet_date()
+            tanggal_manual = get_cached_internet_date()
 
             if st.button("💾 Simpan Transaksi Manual"):
                 if not nama_barang_manual or harga_manual <= 0:
