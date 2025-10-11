@@ -1,4 +1,4 @@
-# =================== REPORT.PY (v5.6 FINAL FIX FILTER PER HARI + BULAN LENGKAP) ===================
+# report.py (v5.7) - Tambah pemisahan Cash / Transfer & input Jenis Transaksi saat Kirim WA
 import streamlit as st
 import pandas as pd
 import datetime
@@ -16,8 +16,7 @@ SPREADSHEET_ID = "1OsnO1xQFniBtEFCvGksR2KKrPt-9idE-w6-poM-wXKU"
 SHEET_SERVIS = "Servis"
 SHEET_TRANSAKSI = "Transaksi"
 SHEET_STOK = "Stok"
-SHEET_PENGELUARAN = "Pengeluaran"   # ✅ Tambahan sheet baru
-
+SHEET_PENGELUARAN = "Pengeluaran"
 
 # ------------------- AUTH GOOGLE -------------------
 def authenticate_google():
@@ -53,6 +52,7 @@ def update_sheet_row_by_nota(sheet_name, nota, updates: dict):
         except Exception:
             cell = None
 
+        # fallback: cari di kolom "No Nota"
         if not cell:
             headers = ws.row_values(1)
             if "No Nota" in headers:
@@ -111,25 +111,29 @@ def show():
     df_servis = read_sheet(SHEET_SERVIS)
     df_transaksi = read_sheet(SHEET_TRANSAKSI)
     df_stok = read_sheet(SHEET_STOK)
-    df_pengeluaran = read_sheet(SHEET_PENGELUARAN)   # ✅ Tambahan
+    df_pengeluaran = read_sheet(SHEET_PENGELUARAN)
 
     if df_servis.empty and df_transaksi.empty:
         st.info("Belum ada data transaksi atau servis di spreadsheet.")
         return
 
     # ========== PARSE PENGELUARAN ==========
+    if df_pengeluaran is None:
+        df_pengeluaran = pd.DataFrame()
     if not df_pengeluaran.empty:
-        for c in ["Tanggal", "Keterangan", "Nominal"]:
+        for c in ["Tanggal", "Keterangan", "Nominal", "Jenis Transaksi"]:
             if c not in df_pengeluaran.columns:
                 df_pengeluaran[c] = ""
         df_pengeluaran["Tanggal"] = pd.to_datetime(df_pengeluaran["Tanggal"], dayfirst=True, errors="coerce").dt.date
         df_pengeluaran["Nominal"] = pd.to_numeric(df_pengeluaran["Nominal"], errors="coerce").fillna(0)
+        df_pengeluaran["Jenis Transaksi"] = df_pengeluaran["Jenis Transaksi"].astype(str).fillna("").replace("nan","")
         df_pengeluaran = df_pengeluaran.dropna(subset=["Tanggal"])
 
-
     # ========== PARSE SERVIS ==========
+    if df_servis is None:
+        df_servis = pd.DataFrame()
     if not df_servis.empty:
-        for col in ["Tanggal Masuk", "Estimasi Selesai", "Harga Jasa", "Harga Modal", "Status", "No Nota", "Nama Pelanggan", "No HP", "Barang"]:
+        for col in ["Tanggal Masuk", "Estimasi Selesai", "Harga Jasa", "Harga Modal", "Status", "No Nota", "Nama Pelanggan", "No HP", "Barang", "Jenis Transaksi"]:
             if col not in df_servis.columns:
                 df_servis[col] = ""
         df_servis["Tanggal Masuk"] = pd.to_datetime(df_servis["Tanggal Masuk"], dayfirst=True, errors="coerce").dt.date
@@ -137,11 +141,14 @@ def show():
         df_servis["Harga Jasa Num"] = df_servis["Harga Jasa"].apply(parse_rp_to_int)
         df_servis["Harga Modal Num"] = df_servis["Harga Modal"].apply(parse_rp_to_int)
         df_servis["Keuntungan"] = df_servis["Harga Jasa Num"] - df_servis["Harga Modal Num"]
+        df_servis["Jenis Transaksi"] = df_servis["Jenis Transaksi"].astype(str).fillna("").replace("nan","")
         df_servis = df_servis.dropna(subset=["Tanggal Masuk"])
 
     # ========== PARSE TRANSAKSI ==========
+    if df_transaksi is None:
+        df_transaksi = pd.DataFrame()
     if not df_transaksi.empty:
-        for c in ["Tanggal", "Modal", "Harga Jual", "Qty", "Untung"]:
+        for c in ["Tanggal", "Modal", "Harga Jual", "Qty", "Untung", "Jenis Transaksi"]:
             if c not in df_transaksi.columns:
                 df_transaksi[c] = ""
         df_transaksi["Tanggal"] = pd.to_datetime(df_transaksi["Tanggal"], dayfirst=True, errors="coerce").dt.date
@@ -151,6 +158,7 @@ def show():
         df_transaksi["Untung"] = df_transaksi["Untung"].fillna(
             (df_transaksi["Harga Jual"] - df_transaksi["Modal"]) * df_transaksi["Qty"]
         )
+        df_transaksi["Jenis Transaksi"] = df_transaksi["Jenis Transaksi"].astype(str).fillna("").replace("nan","")
         df_transaksi = df_transaksi.dropna(subset=["Tanggal"])
 
     # ========== FILTER ==========
@@ -163,7 +171,6 @@ def show():
         df_transaksi_f = df_transaksi[df_transaksi["Tanggal"] == tanggal_filter] if not df_transaksi.empty else pd.DataFrame()
         df_pengeluaran_f = df_pengeluaran[df_pengeluaran["Tanggal"] == tanggal_filter] if not df_pengeluaran.empty else pd.DataFrame()
     else:
-        # -------------- DAFTAR BULAN 1 - 12 TETAP MUNCUL --------------
         tahun_ini = datetime.date.today().year
         daftar_bulan = [f"{tahun_ini}-{str(i).zfill(2)}" for i in range(1, 13)]
 
@@ -197,11 +204,29 @@ def show():
             else:
                 df_pengeluaran_f = pd.DataFrame()
 
-    # ========== HITUNG LABA ==========
-    total_servis = df_servis_f["Keuntungan"].sum() if not df_servis_f.empty else 0
-    total_barang = df_transaksi_f["Untung"].sum() if not df_transaksi_f.empty else 0
-    total_pengeluaran = df_pengeluaran_f["Nominal"].sum() if not df_pengeluaran_f.empty else 0
-    total_gabungan = total_servis + total_barang - total_pengeluaran
+    # ========== HITUNG LABA (PER JENIS) ==========
+    # default jika dataframe kosong
+    if df_servis_f.empty:
+        total_servis_cash = total_servis_tf = 0
+    else:
+        total_servis_cash = df_servis_f[df_servis_f["Jenis Transaksi"].str.lower() == "cash"]["Keuntungan"].sum()
+        total_servis_tf = df_servis_f[df_servis_f["Jenis Transaksi"].str.lower() == "transfer"]["Keuntungan"].sum()
+
+    if df_transaksi_f.empty:
+        total_barang_cash = total_barang_tf = 0
+    else:
+        total_barang_cash = df_transaksi_f[df_transaksi_f["Jenis Transaksi"].str.lower() == "cash"]["Untung"].sum()
+        total_barang_tf = df_transaksi_f[df_transaksi_f["Jenis Transaksi"].str.lower() == "transfer"]["Untung"].sum()
+
+    if df_pengeluaran_f.empty:
+        total_peng_cash = total_peng_tf = 0
+    else:
+        total_peng_cash = df_pengeluaran_f[df_pengeluaran_f["Jenis Transaksi"].str.lower() == "cash"]["Nominal"].sum()
+        total_peng_tf = df_pengeluaran_f[df_pengeluaran_f["Jenis Transaksi"].str.lower() == "transfer"]["Nominal"].sum()
+
+    total_cash = (total_servis_cash + total_barang_cash) - total_peng_cash
+    total_transfer = (total_servis_tf + total_barang_tf) - total_peng_tf
+    total_gabungan = total_cash + total_transfer  # keseluruhan
 
     # ========== POTENSI LABA STOK ==========
     potensi_laba = 0
@@ -215,8 +240,8 @@ def show():
         df_stok["Potensi Laba"] = (df_stok["harga_jual"] - df_stok["modal"]) * df_stok["qty"]
         potensi_laba = df_stok["Potensi Laba"].sum()
 
-    # ========== METRIK ==========
-        st.markdown(f"""
+    # ========== METRIK (TAMPILAN) ==========
+    st.markdown(f"""
     <style>
     .metric-container {{
         display: flex;
@@ -227,51 +252,72 @@ def show():
     }}
     .metric-card {{
         background: rgba(255, 255, 255, 0.05);
-        border: 1px solid rgba(255, 255, 255, 0.1);
+        border: 1px solid rgba(255, 255, 255, 0.08);
         padding: 8px 12px;
         border-radius: 8px;
-        min-width: 120px;
+        min-width: 150px;
         text-align: center;
-        box-shadow: 0 1px 4px rgba(0,0,0,0.15);
+        box-shadow: 0 1px 4px rgba(0,0,0,0.12);
         transition: all 0.2s ease-in-out;
-    }}
-    .metric-card:hover {{
-        transform: scale(1.03);
-        background: rgba(255, 255, 255, 0.08);
     }}
     .metric-label {{
         font-size: 0.8rem;
-        opacity: 0.8;
+        opacity: 0.85;
     }}
     .metric-value {{
         font-size: 1rem;
         font-weight: 600;
-        margin-top: 2px;
+        margin-top: 6px;
     }}
     </style>
 
+    <div style="margin-bottom:6px;"><strong>Ringkasan (Cash)</strong></div>
     <div class="metric-container">
         <div class="metric-card">
-            <div class="metric-label">💰 Laba Servis</div>
-            <div class="metric-value">{format_rp(total_servis)}</div>
+            <div class="metric-label">💰 Laba Servis (Cash)</div>
+            <div class="metric-value">{format_rp(total_servis_cash)}</div>
         </div>
         <div class="metric-card">
-            <div class="metric-label">📦 Laba Barang</div>
-            <div class="metric-value">{format_rp(total_barang)}</div>
+            <div class="metric-label">📦 Laba Barang (Cash)</div>
+            <div class="metric-value">{format_rp(total_barang_cash)}</div>
         </div>
         <div class="metric-card">
-            <div class="metric-label">💸 Pengeluaran</div>
-            <div class="metric-value" style="color:#ff6b6b;">- {format_rp(total_pengeluaran)}</div>
+            <div class="metric-label">💸 Pengeluaran (Cash)</div>
+            <div class="metric-value" style="color:#ff6b6b;">- {format_rp(total_peng_cash)}</div>
         </div>
         <div class="metric-card">
-            <div class="metric-label">📊 Total Bersih</div>
-            <div class="metric-value" style="color:#4ade80;">{format_rp(total_gabungan)}</div>
+            <div class="metric-label">📊 Total Bersih (Cash)</div>
+            <div class="metric-value" style="color:#4ade80;">{format_rp(total_cash)}</div>
         </div>
+    </div>
+
+    <div style="margin-top:14px;margin-bottom:6px;"><strong>Ringkasan (Transfer)</strong></div>
+    <div class="metric-container">
+        <div class="metric-card">
+            <div class="metric-label">💰 Laba Servis (Transfer)</div>
+            <div class="metric-value">{format_rp(total_servis_tf)}</div>
+        </div>
+        <div class="metric-card">
+            <div class="metric-label">📦 Laba Barang (Transfer)</div>
+            <div class="metric-value">{format_rp(total_barang_tf)}</div>
+        </div>
+        <div class="metric-card">
+            <div class="metric-label">💸 Pengeluaran (Transfer)</div>
+            <div class="metric-value" style="color:#ff6b6b;">- {format_rp(total_peng_tf)}</div>
+        </div>
+        <div class="metric-card">
+            <div class="metric-label">📊 Total Bersih (Transfer)</div>
+            <div class="metric-value" style="color:#4ade80;">{format_rp(total_transfer)}</div>
+        </div>
+    </div>
+
+    <div style="margin-top:14px;">
+        <div class="metric-label">📦 Total Bersih Keseluruhan</div>
+        <div class="metric-value" style="font-size:1.05rem;color:#9be7a3;">{format_rp(total_gabungan)}</div>
     </div>
     """, unsafe_allow_html=True)
 
-
-    st.caption(f"Potensi Laba Stok: Rp {potensi_laba:,.0f}".replace(",", "."))
+    st.caption(f"Potensi Laba Stok: {format_rp(potensi_laba)}")
 
     st.divider()
 
@@ -279,13 +325,13 @@ def show():
     st.subheader("🧾 Data Servis")
     if not df_servis_f.empty:
         st.dataframe(
-            df_servis_f[["No Nota","Tanggal Masuk","Nama Pelanggan","Barang","Status","Harga Jasa","Keuntungan"]],
+            df_servis_f[["No Nota","Tanggal Masuk","Nama Pelanggan","Barang","Status","Harga Jasa","Keuntungan","Jenis Transaksi"]],
             use_container_width=True
         )
     else:
         st.info("Tidak ada data servis untuk periode ini.")
 
-    # ========== WA OTOMATIS ==========
+    # ========== WA OTOMATIS (INPUT TAMBAHAN: JENIS TRANSAKSI) ==========
     st.divider()
     st.subheader("📱 Klik Pelanggan Untuk Input Harga & Kirim WA Otomatis")
     if not df_servis_f.empty:
@@ -299,9 +345,13 @@ def show():
             with st.expander(f"{nama_pelanggan} - {barang} ({status_now})"):
                 existing_hj = str(row.get("Harga Jasa","")).replace("Rp","").replace(".","").strip() if pd.notna(row.get("Harga Jasa","")) else ""
                 existing_hm = str(row.get("Harga Modal","")).replace("Rp","").replace(".","").strip() if pd.notna(row.get("Harga Modal","")) else ""
+                existing_jenis = str(row.get("Jenis Transaksi","")).strip() if pd.notna(row.get("Jenis Transaksi","")) else "Cash"
 
                 harga_jasa_input = st.text_input("Masukkan Harga Jasa (Rp):", value=existing_hj, key=f"hj_{nota}")
                 harga_modal_input = st.text_input("Masukkan Harga Modal (Rp) - tidak dikirim ke WA:", value=existing_hm, key=f"hm_{nota}")
+
+                # Pilihan Jenis Transaksi (Cash / Transfer)
+                jenis_transaksi = st.radio("Pilih Jenis Transaksi:", ["Cash", "Transfer"], index=0 if existing_jenis.lower()!="transfer" else 1, key=f"jenis_{nota}", horizontal=True)
 
                 if st.button("✅ Simpan & Kirim WA", key=f"kirim_{nota}"):
                     try:
@@ -316,7 +366,12 @@ def show():
                     hj_str = format_rp(hj_num) if hj_num else ""
                     hm_str = format_rp(hm_num) if hm_num else ""
 
-                    updates = {"Harga Jasa": hj_str, "Harga Modal": hm_str, "Status": "Lunas"}
+                    updates = {
+                        "Harga Jasa": hj_str,
+                        "Harga Modal": hm_str,
+                        "Status": "Lunas",
+                        "Jenis Transaksi": jenis_transaksi
+                    }
                     ok = update_sheet_row_by_nota(SHEET_SERVIS, nota, updates)
                     if ok:
                         st.success(f"✅ Nota {nota} diperbarui di Google Sheet.")
@@ -326,6 +381,8 @@ def show():
 Unit anda dengan nomor nota *{nota}* sudah selesai dan siap untuk diambil.
 
 Total Biaya Servis: *{hj_str if hj_str else '(Cek Dulu)'}*
+
+Pembayaran: *{jenis_transaksi}*
 
 Terima Kasih 🙏
 {cfg['nama_toko']}"""
@@ -355,7 +412,7 @@ Terima Kasih 🙏
     st.subheader("📦 Data Transaksi Barang")
     if not df_transaksi_f.empty:
         st.dataframe(
-            df_transaksi_f[["No Nota","Tanggal","Nama Barang","Qty","Harga Jual","Modal","Untung","Pembeli"]],
+            df_transaksi_f[["No Nota","Tanggal","Nama Barang","Qty","Harga Jual","Modal","Untung","Pembeli","Jenis Transaksi"]],
             use_container_width=True
         )
     else:
@@ -366,20 +423,22 @@ Terima Kasih 🙏
     st.subheader("💸 Data Pengeluaran")
     if not df_pengeluaran_f.empty:
         st.dataframe(
-            df_pengeluaran_f[["Tanggal", "Keterangan", "Nominal"]],
+            df_pengeluaran_f[["Tanggal", "Keterangan", "Nominal", "Jenis Transaksi"]],
             use_container_width=True
         )
     else:
         st.info("Tidak ada data pengeluaran pada periode ini.")
 
-
     # ========== DOWNLOAD CSV ==========
     st.divider()
-    if not df_servis_f.empty or not df_transaksi_f.empty:
-        gabung = pd.concat([
-            df_servis_f[["No Nota","Tanggal Masuk","Nama Pelanggan","Barang","Keuntungan"]].rename(columns={"Tanggal Masuk":"Tanggal"}),
-            df_transaksi_f[["No Nota","Tanggal","Nama Barang","Untung"]].rename(columns={"Nama Barang":"Barang","Untung":"Keuntungan"})
-        ], ignore_index=True)
+    if (not df_servis_f.empty) or (not df_transaksi_f.empty):
+        gabung_servis = pd.DataFrame()
+        gabung_trans = pd.DataFrame()
+        if not df_servis_f.empty:
+            gabung_servis = df_servis_f[["No Nota","Tanggal Masuk","Nama Pelanggan","Barang","Keuntungan","Jenis Transaksi"]].rename(columns={"Tanggal Masuk":"Tanggal"})
+        if not df_transaksi_f.empty:
+            gabung_trans = df_transaksi_f[["No Nota","Tanggal","Nama Barang","Untung","Jenis Transaksi"]].rename(columns={"Nama Barang":"Barang","Untung":"Keuntungan"})
+        gabung = pd.concat([gabung_servis, gabung_trans], ignore_index=True, sort=False).fillna("")
         csv = gabung.to_csv(index=False).encode("utf-8")
         st.download_button("⬇️ Download Laporan Gabungan (CSV)", csv, "laporan_gabungan.csv", "text/csv")
 
