@@ -1,38 +1,42 @@
 import streamlit as st
 import pandas as pd
-import requests
-import json
+import gspread
+from oauth2client.service_account import ServiceAccountCredentials
 import os
 
-# ---------------------- KONFIG ----------------------
-FIREBASE_URL = "https://toko-4960c-default-rtdb.asia-southeast1.firebasedatabase.app"
+# ==================== KONFIG =====================
+SPREADSHEET_ID = "1uTVKVIuhqSiGU8vqE0cVGWdsd7cqSzTA"  # ID spreadsheet kamu
+SHEET_NAME = "Stok"
 
+# ==================== AUTH GOOGLE =====================
+def authenticate_google():
+    creds_dict = st.secrets["gcp_service_account"]
+    scope = [
+        "https://spreadsheets.google.com/feeds",
+        "https://www.googleapis.com/auth/drive"
+    ]
+    credentials = ServiceAccountCredentials.from_json_keyfile_dict(creds_dict, scope)
+    client = gspread.authorize(credentials)
+    return client
 
-# ---------------------- SIMPAN DATA ----------------------
-def save_barang_to_firebase(data):
-    try:
-        r = requests.post(f"{FIREBASE_URL}/stok_barang.json", json=data)
-        return r.status_code == 200
-    except Exception as e:
-        st.error(f"Gagal koneksi ke Firebase: {e}")
-        return False
+def get_worksheet(sheet_name=SHEET_NAME):
+    client = authenticate_google()
+    sh = client.open_by_key(SPREADSHEET_ID)
+    return sh.worksheet(sheet_name)
 
+# ==================== SPREADSHEET OPS =====================
+def append_to_sheet(sheet_name, data: dict):
+    ws = get_worksheet(sheet_name)
+    headers = ws.row_values(1)
+    row = [data.get(h, "") for h in headers]
+    ws.append_row(row, value_input_option="USER_ENTERED")
 
-# ---------------------- MUAT DATA ----------------------
-def load_barang():
-    try:
-        r = requests.get(f"{FIREBASE_URL}/stok_barang.json")
-        if r.status_code == 200 and r.text != "null":
-            data = r.json()
-            df = pd.DataFrame.from_dict(data, orient="index")
-            df.reset_index(drop=True, inplace=True)
-            return df
-    except Exception as e:
-        st.warning(f"Gagal mengambil data: {e}")
-    return pd.DataFrame(columns=["nama_barang", "modal", "harga_jual", "qty"])
+def read_sheet(sheet_name):
+    ws = get_worksheet(sheet_name)
+    df = pd.DataFrame(ws.get_all_records())
+    return df
 
-
-# ---------------------- PAGE ----------------------
+# ==================== PAGE =====================
 def show():
     st.title("📦 Manajemen Barang (Admin)")
 
@@ -55,20 +59,27 @@ def show():
             "qty": qty
         }
 
-        if save_barang_to_firebase(data):
-            st.success(f"✅ Barang *{nama}* berhasil disimpan ke Firebase!")
-        else:
-            st.error("❌ Gagal menyimpan ke Firebase")
+        try:
+            append_to_sheet("Stok", data)
+            st.success(f"✅ Barang *{nama}* berhasil disimpan ke Google Sheet!")
+        except Exception as e:
+            st.error(f"❌ Gagal menyimpan ke Sheet: {e}")
 
-    # ---------------------- TABEL DATA ----------------------
+    # ==================== TABEL DATA =====================
     st.divider()
-    st.subheader("📋 Daftar Barang di Database")
+    st.subheader("📋 Daftar Barang di Google Sheet")
 
-    df = load_barang()
-    if not df.empty:
-        # Tambahkan kolom ke format rupiah agar enak dibaca
-        df["modal"] = df["modal"].apply(lambda x: f"Rp {x:,.0f}".replace(",", "."))
-        df["harga_jual"] = df["harga_jual"].apply(lambda x: f"Rp {x:,.0f}".replace(",", "."))
-        st.dataframe(df, use_container_width=True)
-    else:
-        st.info("Belum ada data barang di Firebase.")
+    try:
+        df = read_sheet("Stok")
+        if not df.empty:
+            df["modal"] = df["modal"].apply(lambda x: f"Rp {x:,.0f}".replace(",", "."))
+            df["harga_jual"] = df["harga_jual"].apply(lambda x: f"Rp {x:,.0f}".replace(",", "."))
+            st.dataframe(df, use_container_width=True)
+        else:
+            st.info("Belum ada data barang di Sheet 'Stok'.")
+    except Exception as e:
+        st.error(f"Gagal memuat data dari Sheet: {e}")
+
+# Jalankan Streamlit
+if __name__ == "__main__":
+    show()
