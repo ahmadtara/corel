@@ -15,9 +15,9 @@ with st.sidebar:
         "📱 Capslock Komputer",
         [
             "🧾 Order",
-            "📦 Admin",
             "💸 Pengeluaran",  # ✅ Tambah menu baru
             "📈 Report",
+            "📦 Admin",
             "⚙️ Setting"
         ],
         icons=[
@@ -34,11 +34,11 @@ with st.sidebar:
 # ---------------------- ROUTING HALAMAN ----------------------
 if selected == "🧾 Order":
     Order.show()
-elif selected == "📦 Admin":
-    Admin.show()
 elif selected == "💸 Pengeluaran":   # ✅ routing baru
     Expense.show()
 elif selected == "📈 Report":
     Report.show()
+elif selected == "📦 Admin":
+    Admin.show()
 elif selected == "⚙️ Setting":
     Setting.show()
