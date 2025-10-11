@@ -10,8 +10,8 @@ simplekml
 requests
 geopandas
 fastkml
-owslib
-folium
+gspread
+oauth2client
 datetime
 google-api-python-client>=2.120.0
 google-auth
