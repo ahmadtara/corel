@@ -216,61 +216,69 @@ Terima Kasih 🙏
     # --------------------------------------
     with tab2:
         st.subheader("🧰 Penjualan Accessories / Sparepart")
+
+        # --- Baca Stok ---
         try:
             stok_df = read_sheet(SHEET_STOK)
         except:
-            st.warning("Belum ada Sheet bernama 'Stok'.")
-            return
+            stok_df = pd.DataFrame(columns=["nama_barang", "modal", "harga_jual", "qty"])
 
         if stok_df.empty:
             st.warning("Belum ada data stok barang di Sheet 'Stok'")
-            return
 
-        nama_barang = st.selectbox("Pilih Barang", stok_df["nama_barang"])
-        barang_row = stok_df[stok_df["nama_barang"] == nama_barang].iloc[0]
+        pilihan_input = st.radio(
+            "Pilih Cara Input Transaksi:",
+            ["📦 Pilih dari Stok", "✍️ Input Manual"],
+            horizontal=True
+        )
 
-        modal = float(barang_row.get("modal", 0))
-        harga_default = float(barang_row.get("harga_jual", 0))
-        stok = int(barang_row.get("qty", 0))
+        # =============== CARA 1: PILIH DARI STOK ===============
+        if pilihan_input == "📦 Pilih dari Stok" and not stok_df.empty:
+            nama_barang = st.selectbox("Pilih Barang", stok_df["nama_barang"])
+            barang_row = stok_df[stok_df["nama_barang"] == nama_barang].iloc[0]
 
-        harga_jual = st.number_input("Harga Jual (boleh ubah manual)", value=harga_default)
-        qty = st.number_input("Jumlah Beli", min_value=1, max_value=stok if stok > 0 else 1)
-        nama_pembeli = st.text_input("Nama Pembeli (opsional)")
-        no_hp_pembeli = st.text_input("Nomor WhatsApp Pembeli (opsional)")
-        tanggal = datetime.date.today()
+            modal = float(barang_row.get("modal", 0))
+            harga_default = float(barang_row.get("harga_jual", 0))
+            stok = int(barang_row.get("qty", 0))
 
-        if st.button("💾 Simpan Transaksi"):
-            nota = get_next_nota_from_sheet()
-            total = harga_jual * qty
-            untung = (harga_jual - modal) * qty
+            harga_jual = st.number_input("Harga Jual (boleh ubah manual)", value=harga_default)
+            qty = st.number_input("Jumlah Beli", min_value=1, max_value=stok if stok > 0 else 1)
+            nama_pembeli = st.text_input("Nama Pembeli (opsional)")
+            no_hp_pembeli = st.text_input("Nomor WhatsApp Pembeli (opsional)")
+            tanggal = datetime.date.today()
 
-            transaksi_data = {
-                "No Nota": nota,
-                "Tanggal": tanggal.strftime("%d/%m/%Y"),
-                "Nama Barang": nama_barang,
-                "Modal": modal,
-                "Harga Jual": harga_jual,
-                "Qty": qty,
-                "Total": total,
-                "Untung": untung,
-                "Pembeli": nama_pembeli,
-                "Jenis Transaksi": "Barang"
-            }
+            if st.button("💾 Simpan Transaksi dari Stok"):
+                nota = get_next_nota_from_sheet()
+                total = harga_jual * qty
+                untung = (harga_jual - modal) * qty
 
-            append_to_sheet(SHEET_TRANSAKSI, transaksi_data)
+                transaksi_data = {
+                    "No Nota": nota,
+                    "Tanggal": tanggal.strftime("%d/%m/%Y"),
+                    "Nama Barang": nama_barang,
+                    "Modal": modal,
+                    "Harga Jual": harga_jual,
+                    "Qty": qty,
+                    "Total": total,
+                    "Untung": untung,
+                    "Pembeli": nama_pembeli,
+                    "Jenis Transaksi": "Barang"
+                }
 
-            # Update stok
-            stok_baru = stok - qty
-            ws = get_worksheet(SHEET_STOK)
-            cell = ws.find(nama_barang)
-            if cell:
-                qty_col = [i for i, c in enumerate(stok_df.columns) if c.lower() == "qty"]
-                if qty_col:
-                    ws.update_cell(cell.row, qty_col[0] + 1, stok_baru)
+                append_to_sheet(SHEET_TRANSAKSI, transaksi_data)
 
-            st.success(f"✅ Transaksi {nama_barang} tersimpan! Untung: Rp {untung:,.0f}".replace(",", "."))
+                # Update stok
+                stok_baru = stok - qty
+                ws = get_worksheet(SHEET_STOK)
+                cell = ws.find(nama_barang)
+                if cell:
+                    qty_col = [i for i, c in enumerate(stok_df.columns) if c.lower() == "qty"]
+                    if qty_col:
+                        ws.update_cell(cell.row, qty_col[0] + 1, stok_baru)
 
-            msg = f"""NOTA PENJUALAN
+                st.success(f"✅ Transaksi {nama_barang} tersimpan! Untung: Rp {untung:,.0f}".replace(",", "."))
+
+                msg = f"""NOTA PENJUALAN
 
 💻 *{cfg['nama_toko']}* 💻
 {cfg['alamat']}
@@ -286,16 +294,104 @@ Total   : Rp {total:,.0f}
 Terima kasih sudah berbelanja!
 """
 
-            if no_hp_pembeli:
-                hp = str(no_hp_pembeli).replace("+", "").replace(" ", "").replace("-", "")
-                if hp.startswith("0"):
-                    hp = "62" + hp[1:]
-                elif not hp.startswith("62"):
-                    hp = "62" + hp
-                    
-                encoded_msg = urllib.parse.quote(msg)
-                wa_link = f"https://wa.me/{hp}?text={requests.utils.quote(msg)}"
-                st.markdown(f"[📲 KIRIM NOTA VIA WHATSAPP]({wa_link})", unsafe_allow_html=True)
+                if no_hp_pembeli:
+                    hp = str(no_hp_pembeli).replace("+", "").replace(" ", "").replace("-", "")
+                    if hp.startswith("0"):
+                        hp = "62" + hp[1:]
+                    elif not hp.startswith("62"):
+                        hp = "62" + hp
+
+                    encoded_msg = urllib.parse.quote(msg)
+                    wa_link = f"https://wa.me/{hp}?text={requests.utils.quote(msg)}"
+                    st.markdown(f"[📲 KIRIM NOTA VIA WHATSAPP]({wa_link})", unsafe_allow_html=True)
+
+        # =============== CARA 2: INPUT MANUAL ===============
+        if pilihan_input == "✍️ Input Manual":
+            nama_barang_manual = st.text_input("Nama Barang")
+            modal_manual = st.number_input("Harga Modal", min_value=0.0, format="%.0f")
+            harga_manual = st.number_input("Harga Jual", min_value=0.0, format="%.0f")
+            qty_manual = st.number_input("Jumlah Beli", min_value=1)
+            nama_pembeli_manual = st.text_input("Nama Pembeli (opsional)")
+            no_hp_pembeli_manual = st.text_input("Nomor WhatsApp Pembeli (opsional)")
+            tanggal_manual = datetime.date.today()
+
+            if st.button("💾 Simpan Transaksi Manual"):
+                if not nama_barang_manual or harga_manual <= 0:
+                    st.error("Nama barang dan harga jual wajib diisi!")
+                else:
+                    nota = get_next_nota_from_sheet()
+                    total = harga_manual * qty_manual
+                    untung = (harga_manual - modal_manual) * qty_manual
+
+                    transaksi_data = {
+                        "No Nota": nota,
+                        "Tanggal": tanggal_manual.strftime("%d/%m/%Y"),
+                        "Nama Barang": nama_barang_manual,
+                        "Modal": modal_manual,
+                        "Harga Jual": harga_manual,
+                        "Qty": qty_manual,
+                        "Total": total,
+                        "Untung": untung,
+                        "Pembeli": nama_pembeli_manual,
+                        "Jenis Transaksi": "Barang"
+                    }
+
+                    append_to_sheet(SHEET_TRANSAKSI, transaksi_data)
+
+                    # Cek apakah barang sudah ada di stok
+                    ws = get_worksheet(SHEET_STOK)
+                    try:
+                        cell = ws.find(nama_barang_manual)
+                        if cell:
+                            # update qty stok bertambah (karena manual dianggap stok tersedia)
+                            current_qty = int(stok_df.loc[stok_df['nama_barang'] == nama_barang_manual, 'qty'].iloc[0])
+                            ws.update_cell(cell.row, stok_df.columns.get_loc('qty') + 1, current_qty - qty_manual)
+                        else:
+                            # barang belum ada → buat baru dengan stok awal = 0 - qty_manual
+                            headers = ws.row_values(1)
+                            row_data = ["" for _ in headers]
+                            for idx, h in enumerate(headers):
+                                if h.lower() == "nama_barang":
+                                    row_data[idx] = nama_barang_manual
+                                elif h.lower() == "modal":
+                                    row_data[idx] = modal_manual
+                                elif h.lower() == "harga_jual":
+                                    row_data[idx] = harga_manual
+                                elif h.lower() == "qty":
+                                    row_data[idx] = 0 - qty_manual
+                            ws.append_row(row_data, value_input_option="USER_ENTERED")
+                    except Exception as e:
+                        st.warning(f"Gagal update stok: {e}")
+
+                    st.success(f"✅ Transaksi manual {nama_barang_manual} tersimpan! Untung: Rp {untung:,.0f}".replace(",", "."))
+
+                    msg = f"""NOTA PENJUALAN
+
+💻 *{cfg['nama_toko']}* 💻
+{cfg['alamat']}
+HP : {cfg['telepon']}
+
+No Nota : {nota}
+Tanggal : {tanggal_manual.strftime('%d/%m/%Y')}
+Barang  : {nama_barang_manual}
+Qty     : {qty_manual}
+Harga   : Rp {harga_manual:,.0f}
+Total   : Rp {total:,.0f}
+
+Terima kasih sudah berbelanja!
+"""
+
+                    if no_hp_pembeli_manual:
+                        hp = str(no_hp_pembeli_manual).replace("+", "").replace(" ", "").replace("-", "")
+                        if hp.startswith("0"):
+                            hp = "62" + hp[1:]
+                        elif not hp.startswith("62"):
+                            hp = "62" + hp
+
+                        encoded_msg = urllib.parse.quote(msg)
+                        wa_link = f"https://wa.me/{hp}?text={requests.utils.quote(msg)}"
+                        st.markdown(f"[📲 KIRIM NOTA VIA WHATSAPP]({wa_link})", unsafe_allow_html=True)
+
 
 
 # Jalankan di Streamlit
