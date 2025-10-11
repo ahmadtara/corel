@@ -1,6 +1,6 @@
 import streamlit as st
 from streamlit_option_menu import option_menu
-import Order, Report, Setting, Admin  # ✅ tambahkan Admin di sini
+import Order, Report, Setting, Admin, Expense  # ✅ tambahkan Expense
 
 # ---------------------- KONFIGURASI HALAMAN ----------------------
 st.set_page_config(
@@ -15,13 +15,15 @@ with st.sidebar:
         "📱 Capslock Komputer",
         [
             "🧾 Order",
-            "📦 Admin",  # ✅ Tambah menu baru untuk Admin.py
+            "📦 Admin",
+            "💸 Pengeluaran",  # ✅ Tambah menu baru
             "📈 Report",
             "⚙️ Setting"
         ],
         icons=[
             "file-earmark-plus",
-            "box-seam",          # ikon untuk Admin Barang
+            "box-seam",
+            "cash-coin",       # 💸 ikon pengeluaran
             "bar-chart-line",
             "gear"
         ],
@@ -32,8 +34,10 @@ with st.sidebar:
 # ---------------------- ROUTING HALAMAN ----------------------
 if selected == "🧾 Order":
     Order.show()
-elif selected == "📦 Admin":  # ✅ Tambah logika baru
+elif selected == "📦 Admin":
     Admin.show()
+elif selected == "💸 Pengeluaran":   # ✅ routing baru
+    Expense.show()
 elif selected == "📈 Report":
     Report.show()
 elif selected == "⚙️ Setting":
