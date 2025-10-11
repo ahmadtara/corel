@@ -177,7 +177,7 @@ def show():
 
             msg = f"""*NOTA ELEKTRONIK*
 
-🛠 ```{cfg['nama_toko']}```
+🛠💻 ```{cfg['nama_toko']}```
 📍 {cfg['alamat']}
 HP : 📞 {cfg['telepon']}
 
