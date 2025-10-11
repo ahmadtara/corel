@@ -1,4 +1,4 @@
-# =================== REPORT.PY (v2 Sinkron Spreadsheet) ===================
+# =================== REPORT.PY (v3 Sinkron Nomor Nota dari Spreadsheet) ===================
 import streamlit as st
 import pandas as pd
 import datetime
@@ -62,7 +62,7 @@ def parse_rp_to_int(x):
 # ------------------- MAIN PAGE -------------------
 def show():
     cfg = load_config()
-    st.title("📊 Laporan Servis & Barang (Google Sheet Sync)")
+    st.title("📊 Laporan Servis & Barang (Sinkron No Nota dari Google Sheet)")
 
     # ========== LOAD DATA ==========
     df_servis = read_sheet(SHEET_SERVIS)
@@ -88,7 +88,9 @@ def show():
             if c in df_transaksi.columns:
                 df_transaksi[c] = pd.to_numeric(df_transaksi[c], errors="coerce").fillna(0)
         df_transaksi["Total"] = df_transaksi["Harga Jual"] * df_transaksi["Qty"]
-        df_transaksi["Untung"] = df_transaksi["Untung"].fillna((df_transaksi["Harga Jual"] - df_transaksi["Modal"]) * df_transaksi["Qty"])
+        df_transaksi["Untung"] = df_transaksi["Untung"].fillna(
+            (df_transaksi["Harga Jual"] - df_transaksi["Modal"]) * df_transaksi["Qty"]
+        )
 
     # ========== FILTER ==========
     st.sidebar.header("📅 Filter Data")
@@ -163,3 +165,7 @@ def show():
         ], ignore_index=True)
         csv = gabung.to_csv(index=False).encode("utf-8")
         st.download_button("⬇️ Download Laporan Gabungan (CSV)", csv, "laporan_gabungan.csv", "text/csv")
+
+# ------------------- MAIN -------------------
+if __name__ == "__main__":
+    show()
