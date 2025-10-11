@@ -119,11 +119,11 @@ def show():
 
     # ========== PARSE PENGELUARAN ==========
     if not df_pengeluaran.empty:
-        for c in ["Tanggal", "Keterangan", "Jumlah"]:
+        for c in ["Tanggal", "Keterangan", "Nominal"]:
             if c not in df_pengeluaran.columns:
                 df_pengeluaran[c] = ""
         df_pengeluaran["Tanggal"] = pd.to_datetime(df_pengeluaran["Tanggal"], dayfirst=True, errors="coerce").dt.date
-        df_pengeluaran["Jumlah"] = pd.to_numeric(df_pengeluaran["Jumlah"], errors="coerce").fillna(0)
+        df_pengeluaran["Nominal"] = pd.to_numeric(df_pengeluaran["Nominal"], errors="coerce").fillna(0)
         df_pengeluaran = df_pengeluaran.dropna(subset=["Tanggal"])
 
 
@@ -200,7 +200,7 @@ def show():
     # ========== HITUNG LABA ==========
     total_servis = df_servis_f["Keuntungan"].sum() if not df_servis_f.empty else 0
     total_barang = df_transaksi_f["Untung"].sum() if not df_transaksi_f.empty else 0
-    total_pengeluaran = df_pengeluaran_f["Jumlah"].sum() if not df_pengeluaran_f.empty else 0
+    total_pengeluaran = df_pengeluaran_f["Nominal"].sum() if not df_pengeluaran_f.empty else 0
     total_gabungan = total_servis + total_barang - total_pengeluaran
 
     # ========== POTENSI LABA STOK ==========
@@ -317,7 +317,7 @@ Terima Kasih 🙏
     st.subheader("💸 Data Pengeluaran")
     if not df_pengeluaran_f.empty:
         st.dataframe(
-            df_pengeluaran_f[["Tanggal", "Keterangan", "Jumlah"]],
+            df_pengeluaran_f[["Tanggal", "Keterangan", "Nominal"]],
             use_container_width=True
         )
     else:
