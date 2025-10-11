@@ -3,13 +3,11 @@ streamlit-folium
 streamlit-option-menu
 reportlab
 pillow
-openpyxl   # kalau mau export XLSX
-pandas     # kalau mau olah tabel marker
+openpyxl  
+pandas    
 lxml
 simplekml
 requests
-shapely
-osmnx
 geopandas
 fastkml
 owslib
