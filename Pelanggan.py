@@ -1,4 +1,4 @@
-# pelanggan.py (v1.0) - Cari pelanggan, input Harga Jasa/Harga Modal/Jenis Transaksi, simpan & kirim WA
+# pelanggan.py (v1.1) - +Filter per Hari & Bulan
 import streamlit as st
 import pandas as pd
 import datetime
@@ -11,7 +11,6 @@ import requests
 
 # ------------------- CONFIG -------------------
 CONFIG_FILE = "config.json"
-
 SPREADSHEET_ID = "1OsnO1xQFniBtEFCvGksR2KKrPt-9idE-w6-poM-wXKU"
 SHEET_SERVIS = "Servis"
 
@@ -40,10 +39,6 @@ def read_sheet(sheet_name):
         return pd.DataFrame()
 
 def update_sheet_row_by_nota(sheet_name, nota, updates: dict):
-    """
-    Update kolom di baris yang mengandung `nota`. Mencari nota langsung di seluruh sheet,
-    fallback mencari di kolom header 'No Nota'.
-    """
     try:
         ws = get_worksheet(sheet_name)
         try:
@@ -51,7 +46,6 @@ def update_sheet_row_by_nota(sheet_name, nota, updates: dict):
         except Exception:
             cell = None
 
-        # fallback: cari di kolom "No Nota"
         if not cell:
             headers = ws.row_values(1)
             if "No Nota" in headers:
@@ -104,12 +98,27 @@ def show():
         st.info("Belum ada data di sheet Servis.")
         return
 
-    # normalisasi header (pastikan beberapa kolom ada)
-    for col in ["No Nota", "Nama Pelanggan", "No HP", "Barang", "Status", "Harga Jasa", "Harga Modal", "Jenis Transaksi"]:
+    # Pastikan kolom penting ada
+    for col in ["Tanggal","No Nota","Nama Pelanggan","No HP","Barang","Status","Harga Jasa","Harga Modal","Jenis Transaksi"]:
         if col not in df.columns:
             df[col] = ""
 
-    # Search input
+    # ---------------- FILTER ----------------
+    st.markdown("### 📅 Filter Data")
+    today = datetime.date.today()
+    filter_tipe = st.radio("Pilih Jenis Filter:", ["Semua", "Per Hari", "Per Bulan"], horizontal=True)
+
+    if filter_tipe == "Per Hari":
+        tanggal_pilih = st.date_input("Pilih Tanggal:", today)
+        df["Tanggal_parsed"] = pd.to_datetime(df["Tanggal"], errors="coerce").dt.date
+        df = df[df["Tanggal_parsed"] == tanggal_pilih]
+    elif filter_tipe == "Per Bulan":
+        tahun = st.number_input("Tahun", value=today.year, step=1)
+        bulan = st.number_input("Bulan (1–12)", value=today.month, min_value=1, max_value=12, step=1)
+        df["Tanggal_parsed"] = pd.to_datetime(df["Tanggal"], errors="coerce")
+        df = df[(df["Tanggal_parsed"].dt.year == tahun) & (df["Tanggal_parsed"].dt.month == bulan)]
+
+    # ---------------- PENCARIAN ----------------
     st.markdown("### 🔎 Cari Pelanggan")
     q = st.text_input("Cari berdasarkan Nama atau No Nota (ketik lalu Enter)")
 
@@ -121,11 +130,9 @@ def show():
             st.info("Tidak ditemukan pelanggan dengan kata kunci tersebut.")
             return
     else:
-        # jika kosong, tampilkan beberapa entri terakhir untuk navigasi
         results = df.tail(50).copy()
 
-    # Tampilkan daftar hasil (expanders)
-    st.markdown(f"Menampilkan {len(results)} hasil.")
+    st.markdown(f"Menampilkan **{len(results)} hasil**.")
     for idx, row in results.iterrows():
         no_nota = row.get("No Nota", "")
         nama = row.get("Nama Pelanggan", "")
@@ -152,7 +159,6 @@ def show():
                 status_select = st.selectbox("Status:", options=["Cek Dulu","Proses","Selesai","Lunas"], index=0 if status not in ["Proses","Selesai","Lunas"] else ["Cek Dulu","Proses","Selesai","Lunas"].index(status), key=f"status_{no_nota}")
 
             if st.button("✅ Simpan & Kirim WA", key=f"kirim_{no_nota}"):
-                # parsing numeric
                 try:
                     hj_num = int(str(harga_jasa_input).replace(".","").replace(",","").strip()) if str(harga_jasa_input).strip() else 0
                 except:
@@ -178,7 +184,6 @@ def show():
                 else:
                     st.error("Gagal memperbarui sheet.")
 
-                # kirim WA (pesan sesuai format lama — tidak diubah)
                 msg = f"""Assalamualaikum {nama},
 
 Unit anda dengan nomor nota *{no_nota}* sudah selesai dan siap untuk diambil.
