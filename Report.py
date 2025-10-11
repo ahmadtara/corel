@@ -149,18 +149,37 @@ def show():
         df_servis_f = df_servis[df_servis["Tanggal Masuk"] == tanggal_filter] if not df_servis.empty else pd.DataFrame()
         df_transaksi_f = df_transaksi[df_transaksi["Tanggal"] == tanggal_filter] if not df_transaksi.empty else pd.DataFrame()
     else:
-        bulan_unik = sorted(
-            set(df_servis["Tanggal Masuk"].dropna().map(lambda d: d.strftime("%Y-%m"))) |
-            set(df_transaksi["Tanggal"].dropna().map(lambda d: d.strftime("%Y-%m")))
-        )
+        bulan_servis = set()
+        bulan_transaksi = set()
+        
+        if not df_servis.empty and "Tanggal Masuk" in df_servis.columns:
+            bulan_servis = set(df_servis["Tanggal Masuk"].dropna().map(lambda d: d.strftime("%Y-%m")))
+        
+        if not df_transaksi.empty and "Tanggal" in df_transaksi.columns:
+            bulan_transaksi = set(df_transaksi["Tanggal"].dropna().map(lambda d: d.strftime("%Y-%m")))
+        
+        bulan_unik = sorted(bulan_servis | bulan_transaksi)
+
         pilih_bulan = st.sidebar.selectbox("Pilih Bulan:", ["Semua Bulan"] + bulan_unik, index=0)
         if pilih_bulan == "Semua Bulan":
             df_servis_f = df_servis.copy()
             df_transaksi_f = df_transaksi.copy()
         else:
+            if pilih_bulan != "Semua Bulan":
             tahun, bulan = map(int, pilih_bulan.split("-"))
-            df_servis_f = df_servis[df_servis["Tanggal Masuk"].apply(lambda d: d and d.year == tahun and d.month == bulan)]
-            df_transaksi_f = df_transaksi[df_transaksi["Tanggal"].apply(lambda d: d and d.year == tahun and d.month == bulan)]
+            if not df_servis.empty and "Tanggal Masuk" in df_servis.columns:
+                df_servis_f = df_servis[df_servis["Tanggal Masuk"].apply(lambda d: pd.notna(d) and d.year == tahun and d.month == bulan)]
+            else:
+                df_servis_f = pd.DataFrame()
+        
+            if not df_transaksi.empty and "Tanggal" in df_transaksi.columns:
+                df_transaksi_f = df_transaksi[df_transaksi["Tanggal"].apply(lambda d: pd.notna(d) and d.year == tahun and d.month == bulan)]
+            else:
+                df_transaksi_f = pd.DataFrame()
+        else:
+            df_servis_f = df_servis.copy()
+            df_transaksi_f = df_transaksi.copy()
+
 
     # ========== HITUNG LABA ==========
     total_servis = df_servis_f["Keuntungan"].sum() if not df_servis_f.empty else 0
