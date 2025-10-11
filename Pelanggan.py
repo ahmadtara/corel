@@ -1,4 +1,4 @@
-# pelanggan.py (v1.2) - Fix Filter Hari/Bulan pakai kolom 'Tanggal Masuk'
+# pelanggan.py (v1.3) - Fix Filter Hari/Bulan pakai waktu real Asia/Jakarta
 import streamlit as st
 import pandas as pd
 import datetime
@@ -88,6 +88,18 @@ def format_rp(n):
     except:
         return str(n)
 
+def get_waktu_jakarta():
+    """Ambil waktu real Asia/Jakarta dari internet (fallback ke lokal)."""
+    try:
+        r = requests.get("https://timeapi.io/api/Time/current/zone?timeZone=Asia/Jakarta", timeout=5)
+        if r.status_code == 200:
+            data = r.json()
+            dt_str = f"{data['year']}-{data['month']:02d}-{data['day']:02d} {data['hour']:02d}:{data['minute']:02d}:{data['seconds']:02d}"
+            return datetime.datetime.strptime(dt_str, "%Y-%m-%d %H:%M:%S")
+    except Exception as e:
+        print("Gagal ambil waktu internet:", e)
+    return datetime.datetime.now()
+
 # ------------------- APP -------------------
 def show():
     cfg = load_config()
@@ -105,7 +117,7 @@ def show():
 
     # ---------------- FILTER ----------------
     st.markdown("### 📅 Filter Data")
-    today = datetime.date.today()
+    today = get_waktu_jakarta().date()  # << pakai waktu real
     filter_tipe = st.radio("Pilih Jenis Filter:", ["Semua", "Per Hari", "Per Bulan"], horizontal=True)
 
     # Parsing tanggal dari kolom "Tanggal Masuk"
