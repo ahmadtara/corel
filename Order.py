@@ -9,7 +9,6 @@ import json
 # ================= CONFIG ==================
 DATA_FILE = "service_data.csv"
 CONFIG_FILE = "config.json"
-COUNTER_FILE = "nota_counter.txt"
 
 SPREADSHEET_ID = "1OsnO1xQFniBtEFCvGksR2KKrPt-9idE-w6-poM-wXKU"
 SHEET_SERVIS = "Servis"
@@ -43,19 +42,35 @@ def load_config():
         "telepon": "085172174759"
     }
 
-# =============== NOMOR NOTA ===============
-def get_next_nota():
-    if not os.path.exists(COUNTER_FILE):
-        with open(COUNTER_FILE, "w") as f:
-            f.write("1")
-        return "TRX/0000001"
-    else:
-        with open(COUNTER_FILE, "r") as f:
-            current = int(f.read().strip() or 0)
-        next_num = current + 1
-        with open(COUNTER_FILE, "w") as f:
-            f.write(str(next_num))
+# =============== NOMOR NOTA DARI SHEET ===============
+def get_next_nota_from_sheet():
+    try:
+        ws = get_worksheet(SHEET_SERVIS)
+        data = ws.col_values(1)  # kolom A = "No Nota"
+
+        if len(data) <= 1:
+            return "TRX/0000001"
+
+        last_nota = None
+        # cari nota terakhir valid (skip baris kosong)
+        for val in reversed(data):
+            if val.strip():
+                last_nota = val.strip()
+                break
+
+        if not last_nota:
+            return "TRX/0000001"
+
+        if last_nota.startswith("TRX/"):
+            num = int(last_nota.replace("TRX/", ""))
+        else:
+            num = int(last_nota) if last_nota.isdigit() else 0
+
+        next_num = num + 1
         return f"TRX/{next_num:07d}"
+    except Exception as e:
+        st.error(f"Gagal membaca nomor nota dari Google Sheet: {e}")
+        return "TRX/0000001"
 
 # =============== SPREADSHEET OPS ===============
 def append_to_sheet(sheet_name, data: dict):
@@ -95,7 +110,7 @@ def show():
                 st.error("Nama, Nomor HP, dan Barang wajib diisi!")
                 return
 
-            nota = get_next_nota()
+            nota = get_next_nota_from_sheet()
             tanggal_masuk_str = tanggal_masuk.strftime("%d/%m/%Y")
             estimasi_selesai = estimasi.strftime("%d/%m/%Y")
 
@@ -176,7 +191,7 @@ Terima Kasih 🙏"""
         tanggal = datetime.date.today()
 
         if st.button("💾 Simpan Transaksi"):
-            nota = get_next_nota()
+            nota = get_next_nota_from_sheet()
             total = harga_jual * qty
             untung = (harga_jual - modal) * qty
 
