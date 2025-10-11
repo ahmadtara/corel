@@ -10,7 +10,7 @@ from oauth2client.service_account import ServiceAccountCredentials
 # ------------------- CONFIG -------------------
 CONFIG_FILE = "config.json"
 
-SPREADSHEET_ID = "1uTVKVIuhqSiGU8vqE0cVGWdsd7cqSzTA"
+SPREADSHEET_ID = "1zrgkTKGcq6_fdGRBkHYj5Km8nuyOdM6d3Wjetq8ucpk"
 SHEET_SERVIS = "Servis"
 SHEET_TRANSAKSI = "Transaksi"
 SHEET_STOK = "Stok"
