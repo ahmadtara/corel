@@ -285,57 +285,37 @@ def show():
     else:
         st.info("Tidak ada data servis untuk periode ini.")
 
-    # ========== WA OTOMATIS ==========
-    # ========== WA OTOMATIS ==========
+        # ========== WA OTOMATIS (MODERN + HIDE + STATUS ICON) ==========
     st.divider()
     st.subheader("📱 Klik Pelanggan Untuk Input Harga & Kirim WA Otomatis")
 
     st.markdown("""
     <style>
-    .pelanggan-card {
+    .expander-header-custom {
         background: linear-gradient(135deg, #1e293b, #0f172a);
-        border: 1px solid rgba(255,255,255,0.1);
-        padding: 15px 20px;
-        border-radius: 12px;
-        margin-bottom: 12px;
-        box-shadow: 0 2px 5px rgba(0,0,0,0.25);
-        transition: all 0.2s ease-in-out;
-    }
-    .pelanggan-card:hover {
-        transform: scale(1.01);
-        background: linear-gradient(135deg, #334155, #1e293b);
-    }
-    .pelanggan-header {
-        display: flex;
-        justify-content: space-between;
-        align-items: center;
-        margin-bottom: 10px;
-    }
-    .pelanggan-nama {
-        font-weight: 600;
-        font-size: 1rem;
-        color: #fff;
-    }
-    .pelanggan-barang {
-        font-size: 0.85rem;
-        color: #cbd5e1;
-    }
-    .pelanggan-status {
-        background: #3b82f6;
-        color: white;
-        font-size: 0.75rem;
-        padding: 4px 8px;
-        border-radius: 6px;
-    }
-    .harga-input {
-        width: 100%;
-        background: rgba(255,255,255,0.05);
-        border: 1px solid rgba(255,255,255,0.1);
-        color: white;
         border-radius: 8px;
-        padding: 6px 10px;
-        font-size: 0.9rem;
+        padding: 8px 12px;
+        color: #f8fafc;
+        font-weight: 600;
+        margin-bottom: 6px;
+        box-shadow: 0 2px 5px rgba(0,0,0,0.25);
     }
+    .expander-header-custom:hover {
+        background: linear-gradient(135deg, #334155, #1e293b);
+        transform: scale(1.01);
+        transition: all 0.15s ease-in-out;
+    }
+    .status-badge {
+        padding: 3px 8px;
+        border-radius: 6px;
+        font-size: 0.8rem;
+        color: white;
+        font-weight: 500;
+    }
+    .status-lunas { background: #16a34a; }         /* hijau */
+    .status-proses { background: #3b82f6; }        /* biru */
+    .status-menunggu { background: #facc15; color:#000; } /* kuning */
+    .status-lain { background: #94a3b8; }          /* abu */
     .btn-wa {
         background: linear-gradient(90deg, #22c55e, #16a34a);
         color: white !important;
@@ -360,23 +340,31 @@ def show():
             nama_pelanggan = row.get("Nama Pelanggan", "")
             barang = row.get("Barang", "")
             no_hp = row.get("No HP", "")
-            status_now = row.get("Status", "")
+            status_now = str(row.get("Status", "")).strip().title()
+
+            # ====== TENTUKAN WARNA & IKON STATUS ======
+            if "Lunas" in status_now:
+                status_icon, status_class = "✅", "status-lunas"
+            elif "Proses" in status_now:
+                status_icon, status_class = "🔧", "status-proses"
+            elif "Menunggu" in status_now or "Belum" in status_now:
+                status_icon, status_class = "🕓", "status-menunggu"
+            else:
+                status_icon, status_class = "❔", "status-lain"
 
             existing_hj = str(row.get("Harga Jasa","")).replace("Rp","").replace(".","").strip() if pd.notna(row.get("Harga Jasa","")) else ""
             existing_hm = str(row.get("Harga Modal","")).replace("Rp","").replace(".","").strip() if pd.notna(row.get("Harga Modal","")) else ""
 
-            with st.container():
-                st.markdown(f"""
-                <div class="pelanggan-card">
-                    <div class="pelanggan-header">
-                        <div>
-                            <div class="pelanggan-nama">{nama_pelanggan}</div>
-                            <div class="pelanggan-barang">{barang}</div>
-                        </div>
-                        <div class="pelanggan-status">{status_now}</div>
-                    </div>
-                """, unsafe_allow_html=True)
+            header_html = f"""
+            <div class='expander-header-custom'>
+                {nama_pelanggan} — <span style='color:#cbd5e1;'>{barang}</span>
+                <span style='float:right;'>
+                    <span class='status-badge {status_class}'>{status_icon} {status_now}</span>
+                </span>
+            </div>
+            """
 
+            with st.expander(header_html, expanded=False):
                 col1, col2 = st.columns(2)
                 with col1:
                     harga_jasa_input = st.text_input("💰 Harga Jasa (Rp):", value=existing_hj, key=f"hj_{nota}")
@@ -384,8 +372,6 @@ def show():
                     harga_modal_input = st.text_input("📦 Harga Modal (Rp):", value=existing_hm, key=f"hm_{nota}")
 
                 kirim = st.button("✅ Simpan & Kirim WA", key=f"kirim_{nota}")
-                st.markdown("</div>", unsafe_allow_html=True)
-
                 if kirim:
                     try:
                         hj_num = int(harga_jasa_input.replace(".","").replace(",","").strip()) if harga_jasa_input.strip() else 0
@@ -426,6 +412,7 @@ Terima Kasih 🙏
                             st.warning("⚠️ Nomor HP pelanggan kosong atau tidak valid.")
     else:
         st.info("Tidak ada data servis untuk periode ini.")
+
 
 
     # ========== TABEL TRANSAKSI ==========
