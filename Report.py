@@ -1,4 +1,4 @@
-# =================== REPORT.PY (v5 WA Auto-Open + Sinkron Harga) ===================
+# =================== REPORT.PY (v5.1 WA Auto-Open + Sinkron Harga) ===================
 import streamlit as st
 import pandas as pd
 import datetime
@@ -240,27 +240,33 @@ def show():
                     # WA
                     harga_display = hj_str if hj_str else "(Cek Dulu)"
                     msg = f"Assalamualaikum {nama_pelanggan},\n\nUnit anda dengan nomor nota *{nota}* sudah selesai dan siap untuk diambil.\n\nTotal Biaya Servis: *{harga_display}*\n\nTerima Kasih 🙏\n{cfg['nama_toko']}"
+                    
+                    # ===== FORMAT NOMOR HP OTOMATIS (+62) =====
                     no_hp_clean = str(no_hp).replace("+","").replace(" ","").replace("-","").strip()
-                    if no_hp_clean.startswith("0"):
-                        no_hp_clean = "62" + no_hp_clean[1:]
-                    if not no_hp_clean:
-                        st.warning("Nomor HP pelanggan kosong — tidak dapat membuka WhatsApp.")
-                    else:
+                    if no_hp_clean:
+                        if not no_hp_clean.startswith("62"):
+                            if no_hp_clean.startswith("0"):
+                                no_hp_clean = "62" + no_hp_clean[1:]
+                            else:
+                                no_hp_clean = "62" + no_hp_clean
+
                         encoded_msg = urllib.parse.quote(msg)
-                        wa_link = f"https://wa.me/{no_hp_clean}?text={encoded_msg}"
+                        wa_link = f"https://web.whatsapp.com/send?phone={no_hp_clean}&text={encoded_msg}"
                         st.success(f"✅ Membuka WhatsApp untuk {nama_pelanggan}...")
                         st.markdown(f"[📲 Buka WhatsApp]({wa_link})", unsafe_allow_html=True)
-
-                        # buka tab baru otomatis
-                        from streamlit.components.v1 import html as st_html
+                    
+                        # buka otomatis tab baru (JS)
                         js = f"""
                         <script>
-                            window.open("{wa_link}", "_blank");
+                            setTimeout(function(){{
+                                window.open("{wa_link}", "_blank");
+                            }}, 800);
                         </script>
                         """
-                        st_html(js, height=0)
-    else:
-        st.info("Tidak ada data servis untuk ditampilkan.")
+                        st.markdown(js, unsafe_allow_html=True)
+                        st.experimental_rerun()
+                    else:
+                        st.warning("Nomor HP pelanggan kosong — tidak dapat membuka WhatsApp.")
 
     # ========== TABEL TRANSAKSI BARANG ==========
     st.divider()
