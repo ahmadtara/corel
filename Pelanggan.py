@@ -1,4 +1,4 @@
-# pelanggan.py (v1.3) - Fix Filter Hari/Bulan pakai waktu real Asia/Jakarta
+# pelanggan.py (v1.4) - Baca Sheet Super Cepat + Waktu Lokal Asia/Jakarta
 import streamlit as st
 import pandas as pd
 import datetime
@@ -7,7 +7,6 @@ import os
 import gspread
 from oauth2client.service_account import ServiceAccountCredentials
 import urllib.parse
-import requests
 
 # ------------------- CONFIG -------------------
 CONFIG_FILE = "config.json"
@@ -30,10 +29,14 @@ def get_worksheet(sheet_name):
     sh = client.open_by_key(SPREADSHEET_ID)
     return sh.worksheet(sheet_name)
 
+# ------------------- OPTIMASI BACA SHEET -------------------
+@st.cache_data(ttl=120)  # cache 2 menit
 def read_sheet(sheet_name):
+    """Membaca data Google Sheet dengan cache agar cepat."""
     try:
         ws = get_worksheet(sheet_name)
-        return pd.DataFrame(ws.get_all_records())
+        df = pd.DataFrame(ws.get_all_records())
+        return df
     except Exception as e:
         st.warning(f"Gagal membaca sheet {sheet_name}: {e}")
         return pd.DataFrame()
@@ -89,21 +92,19 @@ def format_rp(n):
         return str(n)
 
 def get_waktu_jakarta():
-    """Ambil waktu real Asia/Jakarta dari internet (fallback ke lokal)."""
-    try:
-        r = requests.get("https://timeapi.io/api/Time/current/zone?timeZone=Asia/Jakarta", timeout=5)
-        if r.status_code == 200:
-            data = r.json()
-            dt_str = f"{data['year']}-{data['month']:02d}-{data['day']:02d} {data['hour']:02d}:{data['minute']:02d}:{data['seconds']:02d}"
-            return datetime.datetime.strptime(dt_str, "%Y-%m-%d %H:%M:%S")
-    except Exception as e:
-        print("Gagal ambil waktu internet:", e)
-    return datetime.datetime.now()
+    """Ambil waktu lokal Asia/Jakarta tanpa request internet."""
+    tz = datetime.timezone(datetime.timedelta(hours=7))  # UTC+7
+    return datetime.datetime.now(tz)
 
 # ------------------- APP -------------------
 def show():
     cfg = load_config()
     st.title("📱 Pelanggan — Input Harga & Kirim WA Otomatis")
+
+    # Tombol reload manual cache sheet
+    if st.button("🔄 Reload Data Sheet"):
+        st.cache_data.clear()
+        st.rerun()
 
     df = read_sheet(SHEET_SERVIS)
     if df.empty:
@@ -117,7 +118,7 @@ def show():
 
     # ---------------- FILTER ----------------
     st.markdown("### 📅 Filter Data")
-    today = get_waktu_jakarta().date()  # << pakai waktu real
+    today = get_waktu_jakarta().date()
     filter_tipe = st.radio("Pilih Jenis Filter:", ["Semua", "Per Hari", "Per Bulan"], horizontal=True)
 
     # Parsing tanggal dari kolom "Tanggal Masuk"
