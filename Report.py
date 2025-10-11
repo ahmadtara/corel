@@ -238,22 +238,42 @@ def show():
                         st.warning(f"⚠️ Gagal update Sheet untuk {nota}.")
 
                     # WA
+                    # ✅ Kirim Pesan WA (Format Referensi)
                     harga_display = hj_str if hj_str else "(Cek Dulu)"
-                    msg = f"Assalamualaikum {nama_pelanggan},\n\nUnit anda dengan nomor nota *{nota}* sudah selesai dan siap untuk diambil.\n\nTotal Biaya Servis: *{harga_display}*\n\nTerima Kasih 🙏\n{cfg['nama_toko']}"
+                    msg = f"""Assalamualaikum {nama_pelanggan},
                     
-                    # ===== FORMAT NOMOR HP OTOMATIS (+62) =====
-                    no_hp_clean = str(no_hp).replace("+","").replace(" ","").replace("-","").strip()
+                    Unit anda dengan nomor nota *{nota}* sudah selesai dan siap untuk diambil.
+                    
+                    Total Biaya Servis: *{harga_display}*
+                    
+                    Terima Kasih 🙏
+                    {cfg['nama_toko']}"""
+                    
+                    # Format nomor HP
+                    no_hp_clean = str(no_hp).replace("+", "").replace(" ", "").replace("-", "").strip()
+                    if no_hp_clean.startswith("0"):
+                        no_hp_clean = "62" + no_hp_clean[1:]
+                    elif not no_hp_clean.startswith("62"):
+                        no_hp_clean = "62" + no_hp_clean
+                    
                     if no_hp_clean:
-                        if not no_hp_clean.startswith("62"):
-                            if no_hp_clean.startswith("0"):
-                                no_hp_clean = "62" + no_hp_clean[1:]
-                            else:
-                                no_hp_clean = "62" + no_hp_clean
+                        link = f"https://wa.me/{no_hp_clean}?text={requests.utils.quote(msg)}"
+                        st.success(f"✅ WA siap dibuka untuk {nama_pelanggan}")
+                        st.markdown(f"[📲 Buka WhatsApp]({link})", unsafe_allow_html=True)
+                    
+                        # 🔥 Auto-open tab baru ke WA
+                        js = f"""
+                        <script>
+                            setTimeout(function(){{
+                                window.open("{link}", "_blank");
+                            }}, 800);
+                        </script>
+                        """
+                        st.markdown(js, unsafe_allow_html=True)
+                        st.stop()
+                    else:
+                        st.warning("⚠️ Nomor HP kosong atau tidak valid")
 
-                        encoded_msg = urllib.parse.quote(msg)
-                        wa_link = f"https://web.whatsapp.com/send?phone={no_hp_clean}&text={encoded_msg}"
-                        st.success(f"✅ Membuka WhatsApp untuk {nama_pelanggan}...")
-                        st.markdown(f"[📲 Buka WhatsApp]({wa_link})", unsafe_allow_html=True)
                     
                         # buka otomatis tab baru (JS)
                         js = f"""
