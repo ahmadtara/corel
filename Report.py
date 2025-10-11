@@ -216,63 +216,60 @@ def show():
         potensi_laba = df_stok["Potensi Laba"].sum()
 
     # ========== METRIK ==========
-    st.markdown("""
+        st.markdown(f"""
     <style>
-    .metric-container {
+    .metric-container {{
         display: flex;
-        gap: 15px;
+        gap: 10px;
         flex-wrap: wrap;
         justify-content: flex-start;
         margin-bottom: 10px;
-    }
-    .metric-card {
+    }}
+    .metric-card {{
         background: rgba(255, 255, 255, 0.05);
         border: 1px solid rgba(255, 255, 255, 0.1);
-        padding: 10px 15px;
-        border-radius: 10px;
-        min-width: 150px;
+        padding: 8px 12px;
+        border-radius: 8px;
+        min-width: 120px;
         text-align: center;
-        box-shadow: 0 2px 6px rgba(0,0,0,0.15);
+        box-shadow: 0 1px 4px rgba(0,0,0,0.15);
         transition: all 0.2s ease-in-out;
-    }
-    .metric-card:hover {
-        transform: scale(1.05);
+    }}
+    .metric-card:hover {{
+        transform: scale(1.03);
         background: rgba(255, 255, 255, 0.08);
-    }
-    .metric-label {
-        font-size: 0.9rem;
+    }}
+    .metric-label {{
+        font-size: 0.8rem;
         opacity: 0.8;
-    }
-    .metric-value {
-        font-size: 1.1rem;
+    }}
+    .metric-value {{
+        font-size: 1rem;
         font-weight: 600;
         margin-top: 2px;
-    }
+    }}
     </style>
+
     <div class="metric-container">
         <div class="metric-card">
             <div class="metric-label">💰 Laba Servis</div>
-            <div class="metric-value">Rp {servis}</div>
+            <div class="metric-value">{format_rp(total_servis)}</div>
         </div>
         <div class="metric-card">
             <div class="metric-label">📦 Laba Barang</div>
-            <div class="metric-value">Rp {barang}</div>
+            <div class="metric-value">{format_rp(total_barang)}</div>
         </div>
         <div class="metric-card">
             <div class="metric-label">💸 Pengeluaran</div>
-            <div class="metric-value" style="color:#ff6b6b;">- Rp {pengeluaran}</div>
+            <div class="metric-value" style="color:#ff6b6b;">- {format_rp(total_pengeluaran)}</div>
         </div>
         <div class="metric-card">
             <div class="metric-label">📊 Total Bersih</div>
-            <div class="metric-value" style="color:#4ade80;">Rp {total}</div>
+            <div class="metric-value" style="color:#4ade80;">{format_rp(total_gabungan)}</div>
         </div>
     </div>
-""".format(
-        servis=f"{total_servis:,.0f}".replace(",", "."),
-        barang=f"{total_barang:,.0f}".replace(",", "."),
-        pengeluaran=f"{total_pengeluaran:,.0f}".replace(",", "."),
-        total=f"{total_gabungan:,.0f}".replace(",", ".")
-    ), unsafe_allow_html=True)
+    """, unsafe_allow_html=True)
+
 
     st.caption(f"Potensi Laba Stok: Rp {potensi_laba:,.0f}".replace(",", "."))
 
