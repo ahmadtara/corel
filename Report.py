@@ -16,6 +16,8 @@ SPREADSHEET_ID = "1OsnO1xQFniBtEFCvGksR2KKrPt-9idE-w6-poM-wXKU"
 SHEET_SERVIS = "Servis"
 SHEET_TRANSAKSI = "Transaksi"
 SHEET_STOK = "Stok"
+SHEET_PENGELUARAN = "Pengeluaran"   # ✅ Tambahan sheet baru
+
 
 # ------------------- AUTH GOOGLE -------------------
 def authenticate_google():
@@ -109,10 +111,21 @@ def show():
     df_servis = read_sheet(SHEET_SERVIS)
     df_transaksi = read_sheet(SHEET_TRANSAKSI)
     df_stok = read_sheet(SHEET_STOK)
+    df_pengeluaran = read_sheet(SHEET_PENGELUARAN)   # ✅ Tambahan
 
     if df_servis.empty and df_transaksi.empty:
         st.info("Belum ada data transaksi atau servis di spreadsheet.")
         return
+
+    # ========== PARSE PENGELUARAN ==========
+    if not df_pengeluaran.empty:
+        for c in ["Tanggal", "Keterangan", "Jumlah"]:
+            if c not in df_pengeluaran.columns:
+                df_pengeluaran[c] = ""
+        df_pengeluaran["Tanggal"] = pd.to_datetime(df_pengeluaran["Tanggal"], dayfirst=True, errors="coerce").dt.date
+        df_pengeluaran["Jumlah"] = pd.to_numeric(df_pengeluaran["Jumlah"], errors="coerce").fillna(0)
+        df_pengeluaran = df_pengeluaran.dropna(subset=["Tanggal"])
+
 
     # ========== PARSE SERVIS ==========
     if not df_servis.empty:
@@ -148,7 +161,7 @@ def show():
         tanggal_filter = st.sidebar.date_input("Tanggal:", value=datetime.date.today())
         df_servis_f = df_servis[df_servis["Tanggal Masuk"] == tanggal_filter] if not df_servis.empty else pd.DataFrame()
         df_transaksi_f = df_transaksi[df_transaksi["Tanggal"] == tanggal_filter] if not df_transaksi.empty else pd.DataFrame()
-
+        df_pengeluaran_f = df_pengeluaran[df_pengeluaran["Tanggal"] == tanggal_filter] if not df_pengeluaran.empty else pd.DataFrame()
     else:
         # -------------- DAFTAR BULAN 1 - 12 TETAP MUNCUL --------------
         tahun_ini = datetime.date.today().year
@@ -168,6 +181,7 @@ def show():
         if pilih_bulan == "Semua Bulan":
             df_servis_f = df_servis.copy()
             df_transaksi_f = df_transaksi.copy()
+            df_pengeluaran_f = df_pengeluaran.copy()
         else:
             tahun, bulan = map(int, pilih_bulan.split("-"))
             if not df_servis.empty and "Tanggal Masuk" in df_servis.columns:
@@ -178,11 +192,16 @@ def show():
                 df_transaksi_f = df_transaksi[df_transaksi["Tanggal"].apply(lambda d: pd.notna(d) and d.year == tahun and d.month == bulan)]
             else:
                 df_transaksi_f = pd.DataFrame()
+            if not df_transaksi.empty and "Tanggal" in df_transaksi.columns:
+                df_pengeluaran_f = df_pengeluaran[df_pengeluaran["Tanggal"].apply(lambda d: pd.notna(d) and d.year == tahun and d.month == bulan)]
+            else:
+                df_pengeluaran_f = pd.DataFrame()
 
     # ========== HITUNG LABA ==========
     total_servis = df_servis_f["Keuntungan"].sum() if not df_servis_f.empty else 0
     total_barang = df_transaksi_f["Untung"].sum() if not df_transaksi_f.empty else 0
-    total_gabungan = total_servis + total_barang
+    total_pengeluaran = df_pengeluaran_f["Jumlah"].sum() if not df_pengeluaran_f.empty else 0
+    total_gabungan = total_servis + total_barang - total_pengeluaran
 
     # ========== POTENSI LABA STOK ==========
     potensi_laba = 0
@@ -197,11 +216,13 @@ def show():
         potensi_laba = df_stok["Potensi Laba"].sum()
 
     # ========== METRIK ==========
-    col1, col2, col3 = st.columns(3)
+    col1, col2, col3, col4 = st.columns(4)
     col1.metric("💰 Laba Servis", f"Rp {total_servis:,.0f}".replace(",", "."))
     col2.metric("📦 Laba Barang", f"Rp {total_barang:,.0f}".replace(",", "."))
-    col3.metric("📊 Total Gabungan", f"Rp {total_gabungan:,.0f}".replace(",", "."))
+    col3.metric("💸 Pengeluaran", f"- Rp {total_pengeluaran:,.0f}".replace(",", "."))
+    col4.metric("📊 Total Bersih", f"Rp {total_gabungan:,.0f}".replace(",", "."))
     st.caption(f"Potensi Laba Stok: Rp {potensi_laba:,.0f}".replace(",", "."))
+
 
     st.divider()
 
@@ -290,6 +311,18 @@ Terima Kasih 🙏
         )
     else:
         st.info("Tidak ada transaksi barang pada periode ini.")
+
+    # ========== TABEL PENGELUARAN ==========
+    st.divider()
+    st.subheader("💸 Data Pengeluaran")
+    if not df_pengeluaran_f.empty:
+        st.dataframe(
+            df_pengeluaran_f[["Tanggal", "Keterangan", "Jumlah"]],
+            use_container_width=True
+        )
+    else:
+        st.info("Tidak ada data pengeluaran pada periode ini.")
+
 
     # ========== DOWNLOAD CSV ==========
     st.divider()
