@@ -1,4 +1,4 @@
-# ===================== ORDER.PY (v5.7 FINAL) =====================
+# ===================== ORDER.PY (v5.8 FINAL - PREFIX SRV & TRX) =====================
 import streamlit as st
 import pandas as pd
 import datetime
@@ -58,23 +58,30 @@ def save_local_data(df):
     df.to_csv(DATA_FILE, index=False)
 
 # =============== NOMOR NOTA ===============
-def get_next_nota_from_sheet():
+def get_next_nota_from_sheet(sheet_name, prefix):
+    """
+    Ambil nomor nota terakhir dari sheet_name, lalu naikkan +1.
+    Prefix otomatis: SRV/ untuk Servis, TRX/ untuk Transaksi.
+    """
     try:
-        ws = get_worksheet(SHEET_SERVIS)
+        ws = get_worksheet(sheet_name)
         data = ws.col_values(1)
         if len(data) <= 1:
-            return "TRX/0000001"
+            return f"{prefix}0000001"
+        last_nota = None
         for val in reversed(data):
             if val.strip():
                 last_nota = val.strip()
                 break
-        if last_nota.startswith("TRX/"):
-            num = int(last_nota.replace("TRX/", ""))
+        if last_nota and last_nota.startswith(prefix):
+            num = int(last_nota.replace(prefix, ""))
         else:
-            num = int(last_nota) if last_nota.isdigit() else 0
-        return f"TRX/{num+1:07d}"
-    except:
-        return "TRX/0000001"
+            # Jika belum pernah ada nota dengan prefix ini
+            num = 0
+        return f"{prefix}{num+1:07d}"
+    except Exception as e:
+        print("Error generate nota:", e)
+        return f"{prefix}0000001"
 
 # =============== SPREADSHEET OPS ===============
 def append_to_sheet(sheet_name, data: dict):
@@ -134,7 +141,7 @@ def show():
                 st.error("Nama, Nomor HP, dan Barang wajib diisi!")
                 return
 
-            nota = get_next_nota_from_sheet()
+            nota = get_next_nota_from_sheet(SHEET_SERVIS, "SRV/")
             tanggal_masuk_str = tanggal_masuk.strftime("%d/%m/%Y")
             estimasi_selesai = estimasi.strftime("%d/%m/%Y")
 
@@ -224,7 +231,7 @@ Terima Kasih 🙏
             tanggal = datetime.date.today()
 
             if st.button("💾 Simpan Transaksi dari Stok"):
-                nota = get_next_nota_from_sheet()
+                nota = get_next_nota_from_sheet(SHEET_TRANSAKSI, "TRX/")
                 total = harga_jual * qty
                 untung = (harga_jual - modal) * qty
                 transaksi_data = {
@@ -278,7 +285,7 @@ Terima kasih sudah berbelanja!
                 if not nama_barang_manual or harga_manual <= 0:
                     st.error("Nama barang dan harga jual wajib diisi!")
                 else:
-                    nota = get_next_nota_from_sheet()
+                    nota = get_next_nota_from_sheet(SHEET_TRANSAKSI, "TRX/")
                     total = harga_manual * qty_manual
                     untung = (harga_manual - modal_manual) * qty_manual
                     transaksi_data = {
