@@ -1,4 +1,4 @@
-# =================== REPORT.PY (v5.4 FIX Filter Bulan + WA Auto-Open + Sinkron Harga) ===================
+# =================== REPORT.PY (v5.5 FIX .dt AttributeError + WA Auto-Open + Sinkron Harga) ===================
 import streamlit as st
 import pandas as pd
 import datetime
@@ -107,10 +107,6 @@ def format_rp(n):
         return str(n)
 
 def month_set_from_df(df, col_name):
-    """
-    Ambil set bulan (YYYY-MM) dari df[col_name] secara aman.
-    Jika kolom tidak ada atau kosong, kembalikan set() kosong.
-    """
     try:
         if col_name not in df.columns:
             return set()
@@ -129,59 +125,63 @@ def show():
     df_transaksi = read_sheet(SHEET_TRANSAKSI)
     df_stok = read_sheet(SHEET_STOK)
 
-    if (df_servis is None or df_servis.empty) and (df_transaksi is None or df_transaksi.empty):
+    # normalisasi: pastikan bukan None
+    if df_servis is None:
+        df_servis = pd.DataFrame()
+    if df_transaksi is None:
+        df_transaksi = pd.DataFrame()
+    if df_stok is None:
+        df_stok = pd.DataFrame()
+
+    if df_servis.empty and df_transaksi.empty:
         st.info("Belum ada data transaksi atau servis di spreadsheet.")
         return
 
     # ========== PARSE SERVIS ==========
-    if df_servis is None:
-        df_servis = pd.DataFrame()
-    if not df_servis.empty:
-        for col in ["Tanggal Masuk", "Estimasi Selesai", "Harga Jasa", "Harga Modal", "Status", "No Nota", "Nama Pelanggan", "No HP", "Barang", "Kerusakan", "Kelengkapan"]:
-            if col not in df_servis.columns:
-                df_servis[col] = ""
-        # gunakan to_datetime tanpa .dt.date dulu supaya tetap bisa operasi datetime
+    # pastikan kolom ada (placeholder) supaya downstream tidak KeyError
+    for col in ["Tanggal Masuk", "Estimasi Selesai", "Harga Jasa", "Harga Modal", "Status", "No Nota", "Nama Pelanggan", "No HP", "Barang", "Kerusakan", "Kelengkapan"]:
+        if col not in df_servis.columns:
+            df_servis[col] = pd.NA
+
+    # PENTING: selalu konversi kolom tanggal jika ada (agar .dt valid)
+    if "Tanggal Masuk" in df_servis.columns:
         df_servis["Tanggal Masuk"] = pd.to_datetime(df_servis["Tanggal Masuk"], format="%d/%m/%Y", errors="coerce")
+    if "Estimasi Selesai" in df_servis.columns:
         df_servis["Estimasi Selesai"] = pd.to_datetime(df_servis["Estimasi Selesai"], format="%d/%m/%Y", errors="coerce")
-        df_servis["Harga Jasa Num"] = df_servis["Harga Jasa"].apply(parse_rp_to_int)
-        df_servis["Harga Modal Num"] = df_servis["Harga Modal"].apply(parse_rp_to_int) if "Harga Modal" in df_servis else 0
-        df_servis["Keuntungan"] = df_servis["Harga Jasa Num"] - df_servis["Harga Modal Num"]
-    else:
-        # pastikan kolom ada agar downstream code tidak KeyError
-        df_servis = pd.DataFrame(columns=["No Nota","Tanggal Masuk","Nama Pelanggan","No HP","Barang","Status","Harga Jasa","Harga Modal","Keuntungan"])
+
+    df_servis["Harga Jasa Num"] = df_servis["Harga Jasa"].apply(parse_rp_to_int)
+    df_servis["Harga Modal Num"] = df_servis["Harga Modal"].apply(parse_rp_to_int) if "Harga Modal" in df_servis.columns else 0
+    df_servis["Keuntungan"] = df_servis["Harga Jasa Num"] - df_servis["Harga Modal Num"]
 
     # ========== PARSE TRANSAKSI ==========
-    if df_transaksi is None:
-        df_transaksi = pd.DataFrame()
-    if not df_transaksi.empty:
-        # pastikan kolom penting ada (jika tidak ada, tambahkan kolom kosong)
-        for c in ["Tanggal", "Modal", "Harga Jual", "Qty", "Untung"]:
-            if c not in df_transaksi.columns:
-                df_transaksi[c] = ""
+    # pastikan kolom penting ada
+    for c in ["Tanggal", "Modal", "Harga Jual", "Qty", "Untung"]:
+        if c not in df_transaksi.columns:
+            df_transaksi[c] = pd.NA
+
+    # PENTING: selalu konversi kolom tanggal jika ada (agar .dt accessor aman)
+    if "Tanggal" in df_transaksi.columns:
         df_transaksi["Tanggal"] = pd.to_datetime(df_transaksi["Tanggal"], format="%d/%m/%Y", errors="coerce")
-        for c in ["Modal", "Harga Jual", "Qty", "Untung"]:
-            df_transaksi[c] = pd.to_numeric(df_transaksi[c], errors="coerce").fillna(0)
-        df_transaksi["Total"] = df_transaksi["Harga Jual"] * df_transaksi["Qty"]
-        df_transaksi["Untung"] = df_transaksi["Untung"].fillna(
-            (df_transaksi["Harga Jual"] - df_transaksi["Modal"]) * df_transaksi["Qty"]
-        )
-    else:
-        # siapkan df_transaksi minimal agar tidak error di UI
-        df_transaksi = pd.DataFrame(columns=["No Nota","Tanggal","Nama Barang","Qty","Harga Jual","Modal","Untung","Pembeli"])
+
+    # numeric conversion
+    for c in ["Modal", "Harga Jual", "Qty", "Untung"]:
+        df_transaksi[c] = pd.to_numeric(df_transaksi[c], errors="coerce").fillna(0)
+    df_transaksi["Total"] = df_transaksi["Harga Jual"] * df_transaksi["Qty"]
+    df_transaksi["Untung"] = df_transaksi["Untung"].fillna(
+        (df_transaksi["Harga Jual"] - df_transaksi["Modal"]) * df_transaksi["Qty"]
+    )
 
     # ========== FILTER ==========
     st.sidebar.header("📅 Filter Data")
     filter_mode = st.sidebar.radio("Mode Filter:", ["Per Hari", "Per Bulan"], index=0)
 
-    # Buat set bulan unik secara aman dari masing-masing df
     bulan_servis = month_set_from_df(df_servis, "Tanggal Masuk")
     bulan_transaksi = month_set_from_df(df_transaksi, "Tanggal")
-
     bulan_unik = sorted(bulan_servis | bulan_transaksi)
 
     if filter_mode == "Per Hari":
         tanggal_filter = st.sidebar.date_input("Tanggal:", value=datetime.date.today())
-        # filter aman: jika kolom tidak ada, gunakan empty DF
+        # pakai pengecekan kolom + .dt hanya jika sudah datetimelike (sekarang sudah konversi di atas)
         if "Tanggal Masuk" in df_servis.columns:
             df_servis_f = df_servis[df_servis["Tanggal Masuk"].dt.date == tanggal_filter].copy()
         else:
@@ -191,6 +191,37 @@ def show():
             df_transaksi_f = df_transaksi[df_transaksi["Tanggal"].dt.date == tanggal_filter].copy()
         else:
             df_transaksi_f = pd.DataFrame()
+    else:
+        pilih_bulan = st.sidebar.selectbox("Pilih Bulan:", ["Semua Bulan"] + bulan_unik, index=0)
+        if pilih_bulan == "Semua Bulan":
+            df_servis_f = df_servis.copy()
+            df_transaksi_f = df_transaksi.copy()
+        else:
+            try:
+                tahun, bulan = map(int, pilih_bulan.split("-"))
+            except Exception:
+                st.warning("Format bulan tidak valid.")
+                tahun, bulan = None, None
+
+            if tahun and bulan:
+                if "Tanggal Masuk" in df_servis.columns:
+                    df_servis_f = df_servis[df_servis["Tanggal Masuk"].apply(lambda d: pd.notna(d) and d.year == tahun and d.month == bulan)].copy()
+                else:
+                    df_servis_f = pd.DataFrame()
+
+                if "Tanggal" in df_transaksi.columns:
+                    df_transaksi_f = df_transaksi[df_transaksi["Tanggal"].apply(lambda d: pd.notna(d) and d.year == tahun and d.month == bulan)].copy()
+                else:
+                    df_transaksi_f = pd.DataFrame()
+            else:
+                df_servis_f = pd.DataFrame()
+                df_transaksi_f = pd.DataFrame()
+
+    # ========== ... sisanya tidak berubah (metrik, tabel, WA, download) ==========
+    # (kode lanjutkan sama seperti versi sebelumnya: hitung laba, tampilkan tabel, loop expander & WA, download CSV)
+    # Untuk ringkas, saya tidak mengulangi seluruh blok UI di sini — pastikan kamu meneruskan file dengan blok UI yang sudah ada sebelumnya.
+   
+
     else:
         pilih_bulan = st.sidebar.selectbox("Pilih Bulan:", ["Semua Bulan"] + bulan_unik, index=0)
         if pilih_bulan == "Semua Bulan":
