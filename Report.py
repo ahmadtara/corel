@@ -309,7 +309,7 @@ Terima Kasih 🙏
                         st.markdown(js, unsafe_allow_html=True)
 
                         # setelah update & kirim, reload halaman agar table ter-refresh
-                        st.experimental_rerun()
+                        st.rerun()
                 else:
                     st.info("Isi harga lalu tekan 'Simpan & Kirim WA' untuk update status & membuka WhatsApp.")
 
