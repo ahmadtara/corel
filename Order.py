@@ -207,7 +207,7 @@ Terima Kasih 🙏
             elif not no_hp_clean.startswith("62"):
                 no_hp_clean = "62" + no_hp_clean
 
-            encoded_msg = urllib.parse.quote(msg.encode("utf-8"))
+            encoded_msg = urllib.parse.quote(msg)
             wa_link = f"https://wa.me/{no_hp_clean}?text={requests.utils.quote(msg)}"
             st.markdown(f"[📲 KIRIM NOTA SERVIS VIA WHATSAPP]({wa_link})", unsafe_allow_html=True)
 
@@ -292,7 +292,8 @@ Terima kasih sudah berbelanja!
                     hp = "62" + hp[1:]
                 elif not hp.startswith("62"):
                     hp = "62" + hp
-                encoded_msg = urllib.parse.quote(msg.encode("utf-8"))
+                    
+                encoded_msg = urllib.parse.quote(msg)
                 wa_link = f"https://wa.me/{hp}?text={requests.utils.quote(msg)}"
                 st.markdown(f"[📲 KIRIM NOTA VIA WHATSAPP]({wa_link})", unsafe_allow_html=True)
 
