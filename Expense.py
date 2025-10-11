@@ -1,4 +1,12 @@
-# ======================== EXPENSE.PY (v5.7 — Tambah Jenis Transaksi Cash/Transfer) ========================
+# ======================== EXPENSE.PY (v5.9 FINAL — Tambah Jenis Transaksi Cash/Transfer + Sinkronisasi Lokal Otomatis) ========================
+# Updated: 2025-10-12
+# Fitur:
+# ✅ Input pengeluaran dengan pilihan jenis transaksi (Cash / Transfer)
+# ✅ Cache lokal otomatis (CSV) jika koneksi Google Sheet gagal
+# ✅ Sinkronisasi otomatis ke Google Sheet saat koneksi pulih
+# ✅ Filter pengeluaran berdasarkan tanggal
+# ✅ Kompatibel dengan sistem ORDER.PY v5.9
+
 import streamlit as st
 import pandas as pd
 import datetime
@@ -139,3 +147,7 @@ def show():
 
         else:
             st.info("Belum ada data pengeluaran.")
+
+
+if __name__ == "__main__":
+    show()
