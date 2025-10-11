@@ -1,4 +1,4 @@
-# =================== REPORT.PY (v4 Sinkron + Input Harga + WA) ===================
+# =================== REPORT.PY (v5 WA Auto-Open + Sinkron Harga) ===================
 import streamlit as st
 import pandas as pd
 import datetime
@@ -7,7 +7,6 @@ import os
 import gspread
 from oauth2client.service_account import ServiceAccountCredentials
 import urllib.parse
-import requests
 
 # ------------------- CONFIG -------------------
 CONFIG_FILE = "config.json"
@@ -44,20 +43,14 @@ def read_sheet(sheet_name):
 
 # ------------------- UPDATE SHEET UTILS -------------------
 def update_sheet_row_by_nota(sheet_name, nota, updates: dict):
-    """
-    Cari baris yang berisi No Nota (kolom A/apa pun) lalu update kolom sesuai `updates` dict.
-    updates: { "Harga Jasa": "Rp 150.000", "Harga Modal": "Rp 50.000", "Status": "Lunas" }
-    """
     try:
         ws = get_worksheet(sheet_name)
-        # temukan sel yang cocok dengan No Nota (mencari di seluruh sheet)
         try:
             cell = ws.find(str(nota))
         except Exception:
             cell = None
 
         if not cell:
-            # jika tidak ditemukan, coba cari di kolom No Nota (asumsi header "No Nota")
             headers = ws.row_values(1)
             if "No Nota" in headers:
                 no_nota_col = headers.index("No Nota") + 1
@@ -75,14 +68,11 @@ def update_sheet_row_by_nota(sheet_name, nota, updates: dict):
 
         row = cell.row
         headers = ws.row_values(1)
-
         for k, v in updates.items():
             if k in headers:
                 col = headers.index(k) + 1
                 ws.update_cell(row, col, v)
             else:
-                # kalau header tidak ada, tambahkan nilai di kolom berikutnya (opsional)
-                # di sini kita lewati agar tidak mengubah struktur sheet
                 st.warning(f"Kolom '{k}' tidak ditemukan di sheet '{sheet_name}'. Lewati update untuk kolom ini.")
         return True
     except Exception as e:
@@ -131,14 +121,11 @@ def show():
 
     # ========== PARSE SERVIS ==========
     if not df_servis.empty:
-        # Pastikan kolom ada -- jika tidak, tambahkan kolom kosong supaya kode aman
         for col in ["Tanggal Masuk", "Estimasi Selesai", "Harga Jasa", "Harga Modal", "Status", "No Nota", "Nama Pelanggan", "No HP", "Barang", "Kerusakan", "Kelengkapan"]:
             if col not in df_servis.columns:
                 df_servis[col] = ""
-
         df_servis["Tanggal Masuk"] = pd.to_datetime(df_servis["Tanggal Masuk"], format="%d/%m/%Y", errors="coerce").dt.date
         df_servis["Estimasi Selesai"] = pd.to_datetime(df_servis["Estimasi Selesai"], format="%d/%m/%Y", errors="coerce").dt.date
-        # convert Harga Jasa/Modal yang sudah berformat Rp jadi numeric
         df_servis["Harga Jasa Num"] = df_servis["Harga Jasa"].apply(parse_rp_to_int)
         df_servis["Harga Modal Num"] = df_servis["Harga Modal"].apply(parse_rp_to_int) if "Harga Modal" in df_servis else 0
         df_servis["Keuntungan"] = df_servis["Harga Jasa Num"] - df_servis["Harga Modal Num"]
@@ -217,7 +204,6 @@ def show():
     st.divider()
     st.subheader("📱 Klik Pelanggan Untuk Input Harga & Kirim WA Otomatis")
     if not df_servis_f.empty:
-        # gunakan iterrows pada df_servis_f (filtered view) tapi saat update kita gunakan nilai No Nota untuk update sheet
         for idx, row in df_servis_f.iterrows():
             nota = row.get("No Nota", "")
             nama_pelanggan = row.get("Nama Pelanggan", "")
@@ -226,116 +212,55 @@ def show():
             status_now = row.get("Status", "")
 
             with st.expander(f"{nama_pelanggan} - {barang} ({status_now})"):
-                # prefill nilai harga tanpa format Rp
-                existing_harga_jasa = ""
-                existing_harga_modal = ""
-                if pd.notna(row.get("Harga Jasa", "")):
-                    existing_harga_jasa = str(row.get("Harga Jasa")).replace("Rp", "").replace(".", "").strip()
-                if pd.notna(row.get("Harga Modal", "")):
-                    existing_harga_modal = str(row.get("Harga Modal")).replace("Rp", "").replace(".", "").strip()
+                existing_harga_jasa = str(row.get("Harga Jasa","")).replace("Rp","").replace(".","").strip() if pd.notna(row.get("Harga Jasa","")) else ""
+                existing_harga_modal = str(row.get("Harga Modal","")).replace("Rp","").replace(".","").strip() if pd.notna(row.get("Harga Modal","")) else ""
 
-                harga_jasa_input = st.text_input(
-                    "Masukkan Harga Jasa (Rp):",
-                    value=existing_harga_jasa,
-                    key=f"harga_jasa_{nota}"
-                )
-                harga_modal_input = st.text_input(
-                    "Masukkan Harga Modal (Rp) - tidak dikirim ke WA:",
-                    value=existing_harga_modal,
-                    key=f"harga_modal_{nota}"
-                )
+                harga_jasa_input = st.text_input("Masukkan Harga Jasa (Rp):", value=existing_harga_jasa, key=f"harga_jasa_{nota}")
+                harga_modal_input = st.text_input("Masukkan Harga Modal (Rp) - tidak dikirim ke WA:", value=existing_harga_modal, key=f"harga_modal_{nota}")
 
                 if st.button("✅ Simpan & Kirim WA", key=f"btn_kirim_{nota}"):
-                    # parsing dan formatting harga
                     try:
-                        hj_num = int(str(harga_jasa_input).replace(".", "").replace(",", "").strip()) if str(harga_jasa_input).strip() else 0
+                        hj_num = int(str(harga_jasa_input).replace(".","").replace(",","").strip()) if harga_jasa_input.strip() else 0
                     except:
                         hj_num = 0
                     try:
-                        hm_num = int(str(harga_modal_input).replace(".", "").replace(",", "").strip()) if str(harga_modal_input).strip() else 0
+                        hm_num = int(str(harga_modal_input).replace(".","").replace(",","").strip()) if harga_modal_input.strip() else 0
                     except:
                         hm_num = 0
-
                     hj_str = format_rp(hj_num) if hj_num else ""
                     hm_str = format_rp(hm_num) if hm_num else ""
 
-                    # buat updates dict
-                    updates = {
-                        "Harga Jasa": hj_str,
-                        "Harga Modal": hm_str,
-                        "Status": "Lunas"
-                    }
-
-                    # update sheet
+                    updates = {"Harga Jasa": hj_str, "Harga Modal": hm_str, "Status": "Lunas"}
                     ok = update_sheet_row_by_nota(SHEET_SERVIS, nota, updates)
                     if ok:
                         st.success(f"✅ Nota {nota} diperbarui di Google Sheet.")
                     else:
-                        st.warning(f"⚠️ Gagal update Sheet untuk {nota}. Cek koneksi atau struktur Sheet.")
+                        st.warning(f"⚠️ Gagal update Sheet untuk {nota}.")
 
-                    # buat pesan WA (tidak menyertakan Harga Modal)
+                    # WA
                     harga_display = hj_str if hj_str else "(Cek Dulu)"
-                    msg = f"""Assalamualaikum {nama_pelanggan},
-
-Unit anda dengan nomor nota *{nota}* sudah selesai dan siap untuk diambil.
-
-Total Biaya Servis: *{harga_display}*
-
-Terima Kasih 🙏
-{cfg['nama_toko']}"""
-
-                    # format nomor HP
-                    no_hp_clean = str(no_hp).replace("+", "").replace(" ", "").replace("-", "").strip()
+                    msg = f"Assalamualaikum {nama_pelanggan},\n\nUnit anda dengan nomor nota *{nota}* sudah selesai dan siap untuk diambil.\n\nTotal Biaya Servis: *{harga_display}*\n\nTerima Kasih 🙏\n{cfg['nama_toko']}"
+                    no_hp_clean = str(no_hp).replace("+","").replace(" ","").replace("-","").strip()
                     if no_hp_clean.startswith("0"):
                         no_hp_clean = "62" + no_hp_clean[1:]
-                    # jika nomor kosong, jangan crash
                     if not no_hp_clean:
                         st.warning("Nomor HP pelanggan kosong — tidak dapat membuka WhatsApp.")
                     else:
                         encoded_msg = urllib.parse.quote(msg)
-                        # pakai web.whatsapp.com untuk desktop, wa.me juga biasa; pakai web URL supaya terbuka di browser
-                        wa_link = f"https://web.whatsapp.com/send?phone={no_hp_clean}&text={encoded_msg}"
+                        wa_link = f"https://wa.me/{no_hp_clean}?text={encoded_msg}"
                         st.success(f"✅ Membuka WhatsApp untuk {nama_pelanggan}...")
                         st.markdown(f"[📲 Buka WhatsApp]({wa_link})", unsafe_allow_html=True)
 
-                        # buka otomatis tab baru (JS)
+                        # buka tab baru otomatis
+                        from streamlit.components.v1 import html as st_html
                         js = f"""
                         <script>
-                            setTimeout(function(){{
-                                window.open("{wa_link}", "_blank");
-                            }}, 800);
+                            window.open("{wa_link}", "_blank");
                         </script>
                         """
-                        st.markdown(js, unsafe_allow_html=True)
-
-                        # setelah update & kirim, reload halaman agar table ter-refresh
-                        st.rerun()
-                else:
-                    st.info("Isi harga lalu tekan 'Simpan & Kirim WA' untuk update status & membuka WhatsApp.")
-
+                        st_html(js, height=0)
     else:
         st.info("Tidak ada data servis untuk ditampilkan.")
-
-    # ========== HAPUS MASSAL (tetap ada) ==========
-    st.divider()
-    st.subheader("🗑️ Hapus Beberapa Data Sekaligus (Hanya Lokal Display, Hati-hati!)")
-    if not df_servis_f.empty:
-        pilih = st.multiselect(
-            "Pilih servis untuk dihapus (ini akan menghapus baris pada tampilan lokal; penghapusan permanen di sheet tidak dilakukan otomatis):",
-            df_servis_f.index,
-            format_func=lambda x: f"{df_servis_f.loc[x, 'Nama Pelanggan']} - {df_servis_f.loc[x, 'Barang']}"
-        )
-
-        if st.button("🚮 Hapus Terpilih"):
-            if pilih:
-                # NOTE: agar tidak merusak sheet, kita hanya menghapus pada view lokal; user bisa implementasikan penghapusan ke sheet jika diinginkan
-                df_servis = df_servis.drop(pilih).reset_index(drop=True)
-                st.success("Baris terpilih dihapus dari tampilan lokal. Untuk hapus permanen, lakukan manual di Google Sheet.")
-                st.experimental_rerun()
-            else:
-                st.warning("Belum ada data yang dipilih.")
-    else:
-        st.info("Tidak ada data servis untuk dihapus pada filter ini.")
 
     # ========== TABEL TRANSAKSI BARANG ==========
     st.divider()
