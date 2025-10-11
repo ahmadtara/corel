@@ -286,8 +286,74 @@ def show():
         st.info("Tidak ada data servis untuk periode ini.")
 
     # ========== WA OTOMATIS ==========
+    # ========== WA OTOMATIS ==========
     st.divider()
     st.subheader("📱 Klik Pelanggan Untuk Input Harga & Kirim WA Otomatis")
+
+    st.markdown("""
+    <style>
+    .pelanggan-card {
+        background: linear-gradient(135deg, #1e293b, #0f172a);
+        border: 1px solid rgba(255,255,255,0.1);
+        padding: 15px 20px;
+        border-radius: 12px;
+        margin-bottom: 12px;
+        box-shadow: 0 2px 5px rgba(0,0,0,0.25);
+        transition: all 0.2s ease-in-out;
+    }
+    .pelanggan-card:hover {
+        transform: scale(1.01);
+        background: linear-gradient(135deg, #334155, #1e293b);
+    }
+    .pelanggan-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        margin-bottom: 10px;
+    }
+    .pelanggan-nama {
+        font-weight: 600;
+        font-size: 1rem;
+        color: #fff;
+    }
+    .pelanggan-barang {
+        font-size: 0.85rem;
+        color: #cbd5e1;
+    }
+    .pelanggan-status {
+        background: #3b82f6;
+        color: white;
+        font-size: 0.75rem;
+        padding: 4px 8px;
+        border-radius: 6px;
+    }
+    .harga-input {
+        width: 100%;
+        background: rgba(255,255,255,0.05);
+        border: 1px solid rgba(255,255,255,0.1);
+        color: white;
+        border-radius: 8px;
+        padding: 6px 10px;
+        font-size: 0.9rem;
+    }
+    .btn-wa {
+        background: linear-gradient(90deg, #22c55e, #16a34a);
+        color: white !important;
+        text-align: center;
+        display: inline-block;
+        padding: 8px 16px;
+        border-radius: 8px;
+        font-weight: 600;
+        text-decoration: none;
+        transition: 0.2s;
+    }
+    .btn-wa:hover {
+        opacity: 0.9;
+        transform: scale(1.03);
+    }
+    </style>
+    """, unsafe_allow_html=True)
+
     if not df_servis_f.empty:
         for idx, row in df_servis_f.iterrows():
             nota = row.get("No Nota", "")
@@ -296,14 +362,31 @@ def show():
             no_hp = row.get("No HP", "")
             status_now = row.get("Status", "")
 
-            with st.expander(f"{nama_pelanggan} - {barang} ({status_now})"):
-                existing_hj = str(row.get("Harga Jasa","")).replace("Rp","").replace(".","").strip() if pd.notna(row.get("Harga Jasa","")) else ""
-                existing_hm = str(row.get("Harga Modal","")).replace("Rp","").replace(".","").strip() if pd.notna(row.get("Harga Modal","")) else ""
+            existing_hj = str(row.get("Harga Jasa","")).replace("Rp","").replace(".","").strip() if pd.notna(row.get("Harga Jasa","")) else ""
+            existing_hm = str(row.get("Harga Modal","")).replace("Rp","").replace(".","").strip() if pd.notna(row.get("Harga Modal","")) else ""
 
-                harga_jasa_input = st.text_input("Masukkan Harga Jasa (Rp):", value=existing_hj, key=f"hj_{nota}")
-                harga_modal_input = st.text_input("Masukkan Harga Modal (Rp) - tidak dikirim ke WA:", value=existing_hm, key=f"hm_{nota}")
+            with st.container():
+                st.markdown(f"""
+                <div class="pelanggan-card">
+                    <div class="pelanggan-header">
+                        <div>
+                            <div class="pelanggan-nama">{nama_pelanggan}</div>
+                            <div class="pelanggan-barang">{barang}</div>
+                        </div>
+                        <div class="pelanggan-status">{status_now}</div>
+                    </div>
+                """, unsafe_allow_html=True)
 
-                if st.button("✅ Simpan & Kirim WA", key=f"kirim_{nota}"):
+                col1, col2 = st.columns(2)
+                with col1:
+                    harga_jasa_input = st.text_input("💰 Harga Jasa (Rp):", value=existing_hj, key=f"hj_{nota}")
+                with col2:
+                    harga_modal_input = st.text_input("📦 Harga Modal (Rp):", value=existing_hm, key=f"hm_{nota}")
+
+                kirim = st.button("✅ Simpan & Kirim WA", key=f"kirim_{nota}")
+                st.markdown("</div>", unsafe_allow_html=True)
+
+                if kirim:
                     try:
                         hj_num = int(harga_jasa_input.replace(".","").replace(",","").strip()) if harga_jasa_input.strip() else 0
                     except:
@@ -338,17 +421,12 @@ Terima Kasih 🙏
 
                         if no_hp_clean.isdigit() and len(no_hp_clean) >= 10:
                             wa_link = f"https://wa.me/{no_hp_clean}?text={urllib.parse.quote(msg)}"
-                            st.markdown(f"[📲 Buka WhatsApp]({wa_link})", unsafe_allow_html=True)
-                            js = f"""
-                            <script>
-                                setTimeout(function(){{
-                                    window.open("{wa_link}", "_blank");
-                                }}, 800);
-                            </script>
-                            """
-                            st.markdown(js, unsafe_allow_html=True)
+                            st.markdown(f'<a class="btn-wa" href="{wa_link}" target="_blank">📲 Kirim ke WhatsApp</a>', unsafe_allow_html=True)
                         else:
                             st.warning("⚠️ Nomor HP pelanggan kosong atau tidak valid.")
+    else:
+        st.info("Tidak ada data servis untuk periode ini.")
+
 
     # ========== TABEL TRANSAKSI ==========
     st.divider()
