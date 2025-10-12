@@ -225,7 +225,7 @@ Terima Kasih 🙏
         with col_refresh:
             if st.button("🔄 Refresh Data Stok"):
                 st.cache_data.clear()
-                st.experimental_rerun()
+                st.rerun()
 
         try:
             stok_df = read_sheet_cached(SHEET_STOK)
