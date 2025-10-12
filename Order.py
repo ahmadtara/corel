@@ -7,8 +7,6 @@ from oauth2client.service_account import ServiceAccountCredentials
 import json
 import requests
 import urllib.parse
-from Setting import load_config
-import streamlit.components.v1 as components
 
 # ================= CONFIG ==================
 SPREADSHEET_ID = "1OsnO1xQFniBtEFCvGksR2KKrPt-9idE-w6-poM-wXKU"
@@ -28,7 +26,6 @@ def authenticate_google():
     credentials = ServiceAccountCredentials.from_json_keyfile_dict(creds_dict, scope)
     client = gspread.authorize(credentials)
     return client
-
 
 def get_worksheet(sheet_name):
     client = authenticate_google()
@@ -70,7 +67,6 @@ def load_local_data():
         "Jenis Transaksi", "uploaded"
     ])
 
-
 def save_local_data(df):
     df.to_csv(DATA_FILE, index=False)
 
@@ -103,7 +99,6 @@ def append_to_sheet(sheet_name, data: dict):
     row = [data.get(h, "") for h in headers]
     ws.append_row(row, value_input_option="USER_ENTERED")
 
-
 @st.cache_data(ttl=120)
 def read_sheet_cached(sheet_name):
     """Cache pembacaan sheet selama 2 menit untuk mempercepat load."""
@@ -127,104 +122,119 @@ def sync_local_cache():
         save_local_data(df)
         st.success("✅ Sinkronisasi cache selesai!")
 
-# =============== HELPERS PRINT NOTE ===============
-def generate_nota_html(kind: str, cfg: dict, data: dict, now_dt: datetime.datetime, paper_height_mm: int = 40) -> str:
+# =============== ESC/POS PRINT HELPERS ===============
+# NOTE: server harus meng-install `python-escpos` (pip install python-escpos)
+# and printer must be accessible by server (USB or network).
+try:
+    from escpos.printer import Usb, Network
+    ESC_POS_AVAILABLE = True
+except Exception:
+    ESC_POS_AVAILABLE = False
+
+def print_escpos_text_lines(lines, cut=True, printer_cfg=None):
     """
-    kind: 'SERVIS' or 'BARANG'
-    data: dict with fields depending on kind
-    paper_height_mm: integer height in mm (58x40 default)
-    Returns full HTML string ready to pass to components.html
+    lines: list of strings
+    printer_cfg: dict from st.secrets['escpos'] or None
+      expected keys:
+        - type: 'network' or 'usb'
+        - host, port (for network)
+        - idVendor, idProduct, in_ep, out_ep (for usb) - id values ints (hex OK)
     """
-    # common header
-    header = f"{cfg['nama_toko']}
-{cfg['alamat']}
-HP: {cfg['telepon']}
-"
+    if not ESC_POS_AVAILABLE:
+        raise RuntimeError("python-escpos not installed on server (pip install python-escpos)")
 
-    if kind == 'SERVIS':
-        body = f"""
-No Nota : {data.get('No Nota')}
-Pelanggan : {data.get('Nama Pelanggan')}
-Tanggal Masuk : {data.get('Tanggal Masuk')}
-Estimasi Selesai : {data.get('Estimasi Selesai')}
-------------------------------
-Barang : {data.get('Barang')}
-Kerusakan : {data.get('Kerusakan')}
-Kelengkapan : {data.get('Kelengkapan')}
-------------------------------
-Harga Jasa : {data.get('Harga Jasa')}
-Status     : {data.get('Status')}
-"""
-    else:  # BARANG
-        body = f"""
-No Nota : {data.get('No Nota')}
-Tanggal : {data.get('Tanggal')}
-Barang  : {data.get('Nama Barang')}
-Qty     : {data.get('Qty')}
-Harga   : Rp {data.get('Harga Jual'):,.0f}
-Total   : Rp {data.get('Total'):,.0f}
-"""
+    p = None
+    try:
+        if printer_cfg and printer_cfg.get("type") == "network":
+            host = printer_cfg.get("host")
+            port = int(printer_cfg.get("port", 9100))
+            p = Network(host, port=port, timeout=10)
+        elif printer_cfg and printer_cfg.get("type") == "usb":
+            # vendor/product expected as hex strings like '0x04b8' or ints
+            vid = printer_cfg.get("idVendor")
+            pid = printer_cfg.get("idProduct")
+            in_ep = printer_cfg.get("in_ep", 0x82)
+            out_ep = printer_cfg.get("out_ep", 0x01)
+            # try convert
+            try:
+                vid_i = int(str(vid), 0)
+                pid_i = int(str(pid), 0)
+            except Exception:
+                vid_i = int(vid)
+                pid_i = int(pid)
+            p = Usb(vid_i, pid_i, 0, in_ep=in_ep, out_ep=out_ep, timeout=0)
+        else:
+            # no config: try network localhost:9100 (common)
+            p = Network("127.0.0.1", port=9100, timeout=10)
 
-    footer = f"
-Terima kasih!
-=================================
-(Struk dibuat pada {now_dt.strftime('%d/%m/%Y %H:%M')})
-"
+        # print lines
+        for ln in lines:
+            # ensure newline
+            p.text(str(ln) + "\n")
+        if cut:
+            try:
+                p.cut()
+            except Exception:
+                # some network printers don't support cut
+                pass
+    finally:
+        try:
+            if p:
+                # Some escpos backends need close - best effort
+                if hasattr(p, 'close'):
+                    p.close()
+        except Exception:
+            pass
 
-    html = f"""
-<html>
-<head>
-<meta charset="utf-8">
-<style>
-@page {{
-    size: 58mm {paper_height_mm}mm;
-    margin: 0;
-}}
-#nota_struk {{
-    visibility: hidden;
-    width: 58mm;
-    font-family: monospace;
-    white-space: pre-wrap;
-    line-height: 1.15;
-    padding: 4px;
-    box-sizing: border-box;
-}}
-@media print {{
-    body * {{ visibility: hidden; }}
-    #nota_struk, #nota_struk * {{ visibility: visible; }}
-    #nota_struk {{
-        position: absolute;
-        left: 0;
-        top: 0;
-        width: 58mm;
-    }}
-}}
-</style>
-</head>
-<body>
-<div id="nota_struk">
-{header}
-------------------------------
-{body}
-{footer}
-</div>
+def build_servis_print_lines(cfg, service_data, now_dt):
+    # Format untuk kertas 57mm x 30mm: keep lines short (about 32-40 chars)
+    lines = []
+    lines.append(cfg.get("nama_toko", "").center(32))
+    lines.append(cfg.get("alamat", ""))
+    lines.append("HP: " + cfg.get("telepon", ""))
+    lines.append("-" * 32)
+    lines.append(f"No Nota : {service_data.get('No Nota')}")
+    lines.append(f"Pelanggan: {service_data.get('Nama Pelanggan')}")
+    lines.append(f"Tanggal  : {service_data.get('Tanggal Masuk')}")
+    lines.append(f"Estimasi : {service_data.get('Estimasi Selesai')}")
+    lines.append("-" * 32)
+    lines.append(f"Barang   : {service_data.get('Barang')}")
+    kerusakan = service_data.get('Kerusakan') or ""
+    # wrap long kerusakan into multiple lines (naive)
+    for i in range(0, len(kerusakan), 32):
+        lines.append(kerusakan[i:i+32])
+    kel = service_data.get('Kelengkapan') or ""
+    if kel:
+        lines.append("Kelengkapan:")
+        for i in range(0, len(kel), 32):
+            lines.append(kel[i:i+32])
+    lines.append("-" * 32)
+    harga = service_data.get("Harga Jasa", "")
+    lines.append(f"Harga Jasa: {harga}")
+    lines.append(f"Status     : {service_data.get('Status')}")
+    lines.append("-" * 32)
+    lines.append("Terima kasih!")
+    lines.append(now_dt.strftime("%d/%m/%Y %H:%M"))
+    return lines
 
-<script>
-window.onload = function() {{
-    setTimeout(function() {{
-        // === PRINT OTOMATIS STRUK (JANGAN DIHAPUS) ===
-        window.print();
-        setTimeout(function() {{
-            var el = document.getElementById('nota_struk');
-            if (el) {{ el.parentNode.removeChild(el); }}
-        }}, 500);
-    }}, 200);
-}};
-</script>
-</body>
-</html>
-"""
-    return html
+def build_barang_print_lines(cfg, transaksi_data, now_dt):
+    lines = []
+    lines.append(cfg.get("nama_toko", "").center(32))
+    lines.append(cfg.get("alamat", ""))
+    lines.append("HP: " + cfg.get("telepon", ""))
+    lines.append("-" * 32)
+    lines.append(f"No Nota : {transaksi_data.get('No Nota')}")
+    lines.append(f"Tanggal : {transaksi_data.get('Tanggal')}")
+    lines.append(f"Barang  : {transaksi_data.get('Nama Barang')}")
+    lines.append(f"Qty     : {transaksi_data.get('Qty')}")
+    harga = transaksi_data.get("Harga Jual", 0)
+    total = transaksi_data.get("Total", 0)
+    lines.append(f"Harga   : Rp {float(harga):,.0f}")
+    lines.append(f"Total   : Rp {float(total):,.0f}")
+    lines.append("-" * 32)
+    lines.append("Terima kasih!")
+    lines.append(now_dt.strftime("%d/%m/%Y %H:%M"))
+    return lines
 
 # =============== PAGE APP ===============
 def show():
@@ -318,10 +328,25 @@ Terima Kasih 🙏
             wa_link = f"https://wa.me/{hp}?text={requests.utils.quote(msg)}"
             st.markdown(f"[📲 KIRIM NOTA SERVIS VIA WHATSAPP]({wa_link})", unsafe_allow_html=True)
 
-            # === Generate and trigger print for SERVIS (58x40) ===
+            # === ESC/POS PRINT SERVIS (langsung, tanpa preview) ===
             now_dt = datetime.datetime.now()
-            nota_html = generate_nota_html('SERVIS', cfg, service_data, now_dt, paper_height_mm=40)
-            components.html(nota_html, height=10, scrolling=False)
+            printer_cfg = None
+            # read escpos config from st.secrets if available
+            try:
+                printer_cfg = st.secrets.get("escpos", None)
+            except Exception:
+                printer_cfg = None
+
+            if ESC_POS_AVAILABLE:
+                try:
+                    lines = build_servis_print_lines(cfg, service_data, now_dt)
+                    print_escpos_text_lines(lines, cut=True, printer_cfg=printer_cfg)
+                    st.info("🖨️ Nota SERVIS dikirim ke printer (ESC/POS).")
+                except Exception as e:
+                    st.warning(f"⚠️ Gagal cetak ke ESC/POS: {e}")
+                    # fallback: tidak memunculkan preview, hanya beri tahu
+            else:
+                st.warning("📌 Module 'python-escpos' belum terpasang di server. Install dengan: pip install python-escpos")
 
     # --------------------------------------
     # TAB 2 : TRANSAKSI BARANG
@@ -412,10 +437,23 @@ Terima kasih sudah berbelanja!
                     wa_link = f"https://wa.me/{hp}?text={requests.utils.quote(msg)}"
                     st.markdown(f"[📲 KIRIM NOTA VIA WHATSAPP]({wa_link})", unsafe_allow_html=True)
 
-                # === Generate and trigger print for BARANG (58x40) ===
+                # === ESC/POS PRINT BARANG (langsung, tanpa preview) ===
                 now_dt = datetime.datetime.now()
-                nota_html = generate_nota_html('BARANG', cfg, transaksi_data, now_dt, paper_height_mm=40)
-                components.html(nota_html, height=10, scrolling=False)
+                printer_cfg = None
+                try:
+                    printer_cfg = st.secrets.get("escpos", None)
+                except Exception:
+                    printer_cfg = None
+
+                if ESC_POS_AVAILABLE:
+                    try:
+                        lines = build_barang_print_lines(cfg, transaksi_data, now_dt)
+                        print_escpos_text_lines(lines, cut=True, printer_cfg=printer_cfg)
+                        st.info("🖨️ Nota BARANG dikirim ke printer (ESC/POS).")
+                    except Exception as e:
+                        st.warning(f"⚠️ Gagal cetak ke ESC/POS: {e}")
+                else:
+                    st.warning("📌 Module 'python-escpos' belum terpasang di server. Install dengan: pip install python-escpos")
 
         # === Input manual ===
         if pilihan_input == "✍️ Input Manual":
@@ -471,10 +509,23 @@ Terima kasih sudah berbelanja!
                         wa_link = f"https://wa.me/{hp}?text={requests.utils.quote(msg)}"
                         st.markdown(f"[📲 KIRIM NOTA VIA WHATSAPP]({wa_link})", unsafe_allow_html=True)
 
-                    # === Generate and trigger print for BARANG (58x40) ===
+                    # === ESC/POS PRINT BARANG (langsung, tanpa preview) ===
                     now_dt = datetime.datetime.now()
-                    nota_html = generate_nota_html('BARANG', cfg, transaksi_data, now_dt, paper_height_mm=40)
-                    components.html(nota_html, height=10, scrolling=False)
+                    printer_cfg = None
+                    try:
+                        printer_cfg = st.secrets.get("escpos", None)
+                    except Exception:
+                        printer_cfg = None
+
+                    if ESC_POS_AVAILABLE:
+                        try:
+                            lines = build_barang_print_lines(cfg, transaksi_data, now_dt)
+                            print_escpos_text_lines(lines, cut=True, printer_cfg=printer_cfg)
+                            st.info("🖨️ Nota BARANG dikirim ke printer (ESC/POS).")
+                        except Exception as e:
+                            st.warning(f"⚠️ Gagal cetak ke ESC/POS: {e}")
+                    else:
+                        st.warning("📌 Module 'python-escpos' belum terpasang di server. Install dengan: pip install python-escpos")
 
 if __name__ == "__main__":
     show()
