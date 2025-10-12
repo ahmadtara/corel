@@ -1,4 +1,4 @@
-# pelanggan.py (v3.1) - Modern Tab Menu + Statistik + Kirim WA Otomatis
+# pelanggan.py (v3.2) - Modern Tab Menu (stable) + Statistik + Kirim WA Otomatis
 import streamlit as st
 import pandas as pd
 import datetime
@@ -108,7 +108,6 @@ Terima Kasih 🙏
         no_hp_clean = "62" + no_hp_clean
     if no_hp_clean.isdigit() and len(no_hp_clean) >= 10:
         wa_link = f"https://wa.me/{no_hp_clean}?text={urllib.parse.quote(msg)}"
-        # open WA in new tab (small delay)
         js = f"""<script>
             setTimeout(function(){{ window.open("{wa_link}", "_blank"); }}, 150);
         </script>"""
@@ -116,149 +115,96 @@ Terima Kasih 🙏
     else:
         st.warning("⚠️ Nomor HP pelanggan kosong atau tidak valid.")
 
-# ------------------- STYLES (tab bar + cards) -------------------
-TAB_STYLE = """
+# ------------------- STYLES -------------------
+STYLE = """
 <style>
-.tab-bar { display:flex; gap:10px; align-items:center; margin-top:8px; margin-bottom:18px; }
-.tab {
-  padding: 10px 18px;
-  border-radius: 8px 8px 0 0;
+.tab-menu { display:flex; gap:28px; border-bottom: 1.5px solid #eee; padding-bottom: 6px; margin-bottom: 18px; }
+.tab-btn {
   background: transparent;
-  color: #444;
-  font-weight:600;
-  cursor:pointer;
+  border: none;
+  font-size: 15px;
+  color: #555;
+  font-weight: 600;
+  padding: 8px 12px;
+  cursor: pointer;
+  border-radius: 6px;
 }
-.tab-active {
-  color: #111;
-  border-bottom: 4px solid #ff3b30;
-  background: transparent;
-}
-.stat-card {
-  padding:18px;
-  border-radius:10px;
-  color: white;
-  font-weight:700;
-  text-align:center;
-}
-.stat-sub { font-weight:600; opacity:0.95; font-size:16px; }
-.stat-num { font-size:20px; margin-top:6px; }
-.card-orange { background:#FFA500; }
-.card-blue { background:#0A84FF; }
-.card-green { background:#34C759; }
-.card-red { background:#FF3B30; }
-.small-padding { padding-top:6px; padding-bottom:6px; }
+.tab-btn:hover { color: #111; background:#f7f7f7; }
+.tab-active { color:#e53935; border-bottom:3px solid #e53935; }
+.stat-card { padding:16px; border-radius:10px; color:#fff; text-align:center; font-weight:700; }
+.card-orange{ background:#FFA500; } .card-blue{ background:#0A84FF; } .card-green{ background:#34C759; } .card-red{ background:#FF3B30; }
 </style>
 """
-st.markdown(TAB_STYLE, unsafe_allow_html=True)
+st.markdown(STYLE, unsafe_allow_html=True)
 
 # ------------------- APP -------------------
 def show():
     cfg = load_config()
     st.title("📱 Pelanggan — Status Antrian & Kirim WA")
 
-    # reload button
+    # reload
     if st.button("🔄 Reload Data Sheet"):
         st.cache_data.clear()
-        st.rerun()
+        st.experimental_rerun()
 
+    # read
     df = read_sheet(SHEET_SERVIS)
     if df.empty:
         st.info("Belum ada data di sheet Servis.")
         return
 
-    # ensure important cols
+    # ensure columns
     for col in ["Tanggal Masuk","No Nota","Nama Pelanggan","No HP","Barang","Harga Jasa","Harga Modal","Jenis Transaksi","Status Antrian"]:
         if col not in df.columns:
             df[col] = ""
 
-    # normalize status strings
     df["Status Antrian"] = df["Status Antrian"].fillna("").astype(str).str.strip()
 
-    # ---------------- STATISTICS CARDS ----------------
+    # statistics cards
     total_antrian = len(df[(df["Status Antrian"] == "") | (df["Status Antrian"].str.lower() == "antrian")])
     total_siap = len(df[df["Status Antrian"].str.lower() == "siap diambil"])
     total_selesai = len(df[df["Status Antrian"].str.lower() == "selesai"])
     total_batal = len(df[df["Status Antrian"].str.lower() == "batal"])
 
-    c1, c2, c3, c4 = st.columns([1.2,1.2,1.2,1.2], gap="large")
-    with c1:
-        st.markdown(f'<div class="stat-card card-orange"><div class="stat-sub">🕒 Antrian</div><div class="stat-num">{total_antrian}</div></div>', unsafe_allow_html=True)
-    with c2:
-        st.markdown(f'<div class="stat-card card-blue"><div class="stat-sub">📢 Siap Diambil</div><div class="stat-num">{total_siap}</div></div>', unsafe_allow_html=True)
-    with c3:
-        st.markdown(f'<div class="stat-card card-green"><div class="stat-sub">✅ Selesai</div><div class="stat-num">{total_selesai}</div></div>', unsafe_allow_html=True)
-    with c4:
-        st.markdown(f'<div class="stat-card card-red"><div class="stat-sub">❌ Batal</div><div class="stat-num">{total_batal}</div></div>', unsafe_allow_html=True)
+    sc1, sc2, sc3, sc4 = st.columns([1.1,1.1,1.1,1.1], gap="large")
+    with sc1:
+        st.markdown(f'<div class="stat-card card-orange">🕒<br>Antrian<br><div style="font-size:18px;margin-top:6px">{total_antrian}</div></div>', unsafe_allow_html=True)
+    with sc2:
+        st.markdown(f'<div class="stat-card card-blue">📢<br>Siap Diambil<br><div style="font-size:18px;margin-top:6px">{total_siap}</div></div>', unsafe_allow_html=True)
+    with sc3:
+        st.markdown(f'<div class="stat-card card-green">✅<br>Selesai<br><div style="font-size:18px;margin-top:6px">{total_selesai}</div></div>', unsafe_allow_html=True)
+    with sc4:
+        st.markdown(f'<div class="stat-card card-red">❌<br>Batal<br><div style="font-size:18px;margin-top:6px">{total_batal}</div></div>', unsafe_allow_html=True)
 
     st.markdown("")  # spacing
 
-    # ---------------- TAB BAR (modern, spaced) ----------------
-    # ---------------- TAB BAR (clean underline style) ----------------
-    TAB_BAR_STYLE = """
-    <style>
-    .tab-menu { display: flex; gap: 30px; border-bottom: 1.5px solid #eee; padding-bottom: 5px; margin-bottom: 20px; }
-    .tab-item {
-        cursor: pointer;
-        font-weight: 500;
-        display: flex;
-        align-items: center;
-        gap: 6px;
-        padding-bottom: 6px;
-        color: #444;
-        transition: all 0.2s ease;
-    }
-    .tab-item:hover {
-        color: #111;
-    }
-    .tab-active {
-        color: #e53935 !important;
-        font-weight: 600;
-        border-bottom: 2.5px solid #e53935;
-    }
-    .tab-icon { font-size: 18px; }
-    </style>
-    """
-    st.markdown(TAB_BAR_STYLE, unsafe_allow_html=True)
-    
-    tabs = [
-        ("🕒", "Antrian"),
-        ("📢", "Siap Diambil"),
-        ("✅", "Selesai"),
-        ("❌", "Batal")
-    ]
-    
+    # TAB BAR using buttons (stable)
+    tabs = [("Antrian","🕒"), ("Siap Diambil","📢"), ("Selesai","✅"), ("Batal","❌")]
     if "active_tab" not in st.session_state:
         st.session_state.active_tab = "Antrian"
-    
-    tab_html = '<div class="tab-menu">'
-    for icon, t in tabs:
-        active_class = "tab-item tab-active" if st.session_state.active_tab == t else "tab-item"
-        tab_html += f'<div class="{active_class}" onclick="window.parent.postMessage({{type: \'switch_tab\', tab: \'{t}\' }}, \'*\')">{icon} {t}</div>'
-    tab_html += '</div>'
-    
-    st.markdown(tab_html, unsafe_allow_html=True)
-    
-    # JavaScript bridge to switch tab
-    st.markdown("""
-    <script>
-    window.addEventListener('message', (event) => {
-        if (event.data.type === 'switch_tab') {
-            const tab = event.data.tab;
-            window.parent.postMessage({ type: 'streamlit:setSessionState', state: { active_tab: tab } }, '*');
-        }
-    });
-    </script>
-    """, unsafe_allow_html=True)
-    
+
+    # Render tab buttons with spacing and active style
+    tab_cols = st.columns(len(tabs))
+    for i, (label, icon) in enumerate(tabs):
+        is_active = (st.session_state.active_tab == label)
+        btn_label = f"{icon}  {label}"
+        if is_active:
+            if tab_cols[i].button(btn_label, key=f"tab_{label}"):
+                # keep active if re-click
+                st.session_state.active_tab = label
+            # add a visual underline via markdown (since button can't have class easily)
+            tab_cols[i].markdown(f"<div style='height:4px;background:#e53935;border-radius:2px;margin-top:6px'></div>", unsafe_allow_html=True)
+        else:
+            if tab_cols[i].button(btn_label, key=f"tab_{label}"):
+                st.session_state.active_tab = label
+
     active_status = st.session_state.active_tab
 
-
-    # ---------------- FILTER area (ke bawah) ----------------
+    # -------- FILTER AREA --------
     st.markdown("### 📅 Filter Data")
     today = get_waktu_jakarta().date()
     filter_tipe = st.radio("Filter:", ["Semua", "Per Hari", "Per Bulan"], horizontal=True)
 
-    # parse date
     df["Tanggal_parsed"] = pd.to_datetime(df["Tanggal Masuk"], errors="coerce", dayfirst=True)
 
     if filter_tipe == "Per Hari":
@@ -276,58 +222,58 @@ def show():
         q_lower = q.strip().lower()
         df = df[df["Nama Pelanggan"].astype(str).str.lower().str.contains(q_lower) | df["No Nota"].astype(str).str.lower().str.contains(q_lower)]
 
-    # ---------------- FILTER BY SELECTED TAB ----------------
+    # filter by active_status
     if active_status == "Antrian":
         df_view = df[(df["Status Antrian"] == "") | (df["Status Antrian"].str.lower() == "antrian")]
     else:
         df_view = df[df["Status Antrian"].str.lower() == active_status.lower()]
 
     st.markdown(f"Menampilkan **{len(df_view)} data** untuk status **{active_status}**.")
-    
-        # if empty, show friendly message
-        if len(df_view) == 0:
-            st.info(f"📭 Belum ada data untuk status **{active_status}**.")
-            return
-    
-        # show entries
-        df_view = df_view.reset_index(drop=True)
-        for idx, row in df_view.iterrows():
-            no_nota = row.get("No Nota", "")
-            nama = row.get("Nama Pelanggan", "")
-            barang = row.get("Barang", "")
-            no_hp = row.get("No HP", "")
-            status_antrian = (row.get("Status Antrian") or "").strip()
-            harga_jasa_existing = row.get("Harga Jasa", "")
-            harga_modal_existing = row.get("Harga Modal", "")
-            jenis_existing = row.get("Jenis Transaksi") if pd.notna(row.get("Jenis Transaksi")) else "Cash"
-    
-            header_label = f"🧾 {no_nota} — {nama} — {barang} ({status_antrian or 'Antrian'})"
-            with st.expander(header_label, expanded=False):
-                left, right = st.columns([2,1])
-                with left:
-                    st.write(f"📅 **Tanggal Masuk:** {row.get('Tanggal Masuk','')}")
-                    st.write(f"👤 **Nama:** {nama}")
-                    st.write(f"📞 **No HP:** {no_hp}")
-                    st.write(f"🧰 **Barang:** {barang}")
-                    st.write(f"📝 **Keterangan Status:** {status_antrian or 'Antrian'}")
-                with right:
-                    harga_jasa_input = st.text_input("Harga Jasa (Rp)", value=str(harga_jasa_existing).replace("Rp","").replace(".",""), key=f"hj_{no_nota}")
-                    harga_modal_input = st.text_input("Harga Modal (Rp)", value=str(harga_modal_existing).replace("Rp","").replace(".",""), key=f"hm_{no_nota}")
-                    jenis_transaksi = st.radio("Jenis Transaksi:", ["Cash","Transfer"], index=0 if str(jenis_existing).lower()!="transfer" else 1, key=f"jenis_{no_nota}", horizontal=True)
-    
-                # parse safely
-                try:
-                    hj_num = int(str(harga_jasa_input).replace(".","").replace(",","").strip()) if str(harga_jasa_input).strip() else 0
-                except:
-                    hj_num = 0
-                try:
-                    hm_num = int(str(harga_modal_input).replace(".","").replace(",","").strip()) if str(harga_modal_input).strip() else 0
-                except:
-                    hm_num = 0
-                hj_str = format_rp(hj_num) if hj_num else ""
-                hm_str = format_rp(hm_num) if hm_num else ""
 
-            # -------- ACTIONS depending on status --------
+    # if empty, show friendly message
+    if len(df_view) == 0:
+        st.info(f"📭 Belum ada data untuk status **{active_status}**.")
+        return
+
+    # show entries
+    df_view = df_view.reset_index(drop=True)
+    for idx, row in df_view.iterrows():
+        no_nota = row.get("No Nota", "")
+        nama = row.get("Nama Pelanggan", "")
+        barang = row.get("Barang", "")
+        no_hp = row.get("No HP", "")
+        status_antrian = (row.get("Status Antrian") or "").strip()
+        harga_jasa_existing = row.get("Harga Jasa", "")
+        harga_modal_existing = row.get("Harga Modal", "")
+        jenis_existing = row.get("Jenis Transaksi") if pd.notna(row.get("Jenis Transaksi")) else "Cash"
+
+        header_label = f"🧾 {no_nota} — {nama} — {barang} ({status_antrian or 'Antrian'})"
+        with st.expander(header_label, expanded=False):
+            left, right = st.columns([2,1])
+            with left:
+                st.write(f"📅 **Tanggal Masuk:** {row.get('Tanggal Masuk','')}")
+                st.write(f"👤 **Nama:** {nama}")
+                st.write(f"📞 **No HP:** {no_hp}")
+                st.write(f"🧰 **Barang:** {barang}")
+                st.write(f"📝 **Keterangan Status:** {status_antrian or 'Antrian'}")
+            with right:
+                harga_jasa_input = st.text_input("Harga Jasa (Rp)", value=str(harga_jasa_existing).replace("Rp","").replace(".",""), key=f"hj_{no_nota}")
+                harga_modal_input = st.text_input("Harga Modal (Rp)", value=str(harga_modal_existing).replace("Rp","").replace(".",""), key=f"hm_{no_nota}")
+                jenis_transaksi = st.radio("Jenis Transaksi:", ["Cash","Transfer"], index=0 if str(jenis_existing).lower()!="transfer" else 1, key=f"jenis_{no_nota}", horizontal=True)
+
+            # parse safely
+            try:
+                hj_num = int(str(harga_jasa_input).replace(".","").replace(",","").strip()) if str(harga_jasa_input).strip() else 0
+            except:
+                hj_num = 0
+            try:
+                hm_num = int(str(harga_modal_input).replace(".","").replace(",","").strip()) if str(harga_modal_input).strip() else 0
+            except:
+                hm_num = 0
+            hj_str = format_rp(hj_num) if hj_num else ""
+            hm_str = format_rp(hm_num) if hm_num else ""
+
+            # actions based on status and active tab
             if (status_antrian == "" or status_antrian.lower() == "antrian") and active_status == "Antrian":
                 if st.button("✅ Siap Diambil (Kirim WA)", key=f"ambil_{no_nota}"):
                     updates = {
@@ -357,7 +303,6 @@ def show():
                             st.warning(f"Nota {no_nota} → Batal")
                             st.experimental_rerun()
             else:
-                # final statuses show readonly info
                 st.info(f"📌 Status Antrian: {status_antrian or 'Antrian'}")
 
 # run
