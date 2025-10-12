@@ -8,6 +8,20 @@ import gspread
 from oauth2client.service_account import ServiceAccountCredentials
 import requests
 
+@st.cache_resource(show_spinner=False)
+def authenticate_google():
+    creds_dict = st.secrets["gcp_service_account"]
+    scope = [
+        "https://spreadsheets.google.com/feeds",
+        "https://www.googleapis.com/auth/drive"
+    ]
+    credentials = ServiceAccountCredentials.from_json_keyfile_dict(creds_dict, scope)
+    client = gspread.authorize(credentials)
+    return client
+
+@st.cache_data(ttl=60)
+def read_sheet_cached(sheet_name):
+    return read_sheet(sheet_name)
 # ------------------- CONFIG -------------------
 CONFIG_FILE = "config.json"
 
