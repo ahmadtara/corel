@@ -1,4 +1,4 @@
-# pelanggan.py (v2.5) - Menu Status + Kirim WA Otomatis
+# pelanggan.py (v3.0) - UI Modern + Statistik + Kirim WA
 import streamlit as st
 import pandas as pd
 import datetime
@@ -16,10 +16,7 @@ SHEET_SERVIS = "Servis"
 # ------------------- AUTH GOOGLE -------------------
 def authenticate_google():
     creds_dict = st.secrets["gcp_service_account"]
-    scope = [
-        "https://spreadsheets.google.com/feeds",
-        "https://www.googleapis.com/auth/drive"
-    ]
+    scope = ["https://spreadsheets.google.com/feeds", "https://www.googleapis.com/auth/drive"]
     credentials = ServiceAccountCredentials.from_json_keyfile_dict(creds_dict, scope)
     client = gspread.authorize(credentials)
     return client
@@ -29,7 +26,7 @@ def get_worksheet(sheet_name):
     sh = client.open_by_key(SPREADSHEET_ID)
     return sh.worksheet(sheet_name)
 
-# ------------------- OPTIMASI BACA SHEET -------------------
+# ------------------- CACHE -------------------
 @st.cache_data(ttl=120)
 def read_sheet(sheet_name):
     try:
@@ -113,6 +110,40 @@ Terima Kasih 🙏
 # ------------------- APP -------------------
 def show():
     cfg = load_config()
+    st.set_page_config(page_title="Pelanggan", page_icon="📱", layout="wide")
+
+    st.markdown(
+        """
+        <style>
+        .status-card {
+            padding: 15px;
+            border-radius: 12px;
+            text-align: center;
+            color: white;
+            font-size: 18px;
+            font-weight: bold;
+        }
+        .menu-btn {
+            background-color: #e5e5e5;
+            padding: 10px 20px;
+            border-radius: 8px;
+            margin-right: 10px;
+            cursor: pointer;
+            font-weight: 500;
+            display: inline-block;
+        }
+        .menu-btn-active {
+            background-color: #0A84FF;
+            color: white;
+        }
+        .menu-btn:hover {
+            background-color: #bdbdbd;
+        }
+        </style>
+        """,
+        unsafe_allow_html=True
+    )
+
     st.title("📱 Pelanggan — Status Antrian & Kirim WA")
 
     if st.button("🔄 Reload Data Sheet"):
@@ -129,17 +160,44 @@ def show():
         if col not in df.columns:
             df[col] = ""
 
-    # ---------------- MENU STATUS ----------------
-    status_menu = st.radio(
-        "📊 Pilih Status Antrian:",
-        ["Antrian", "Siap Diambil", "Selesai", "Batal"],
-        horizontal=True
-    )
+    # ---------------- STATISTIK ----------------
+    total_antrian = len(df[(df["Status Antrian"] == "") | (df["Status Antrian"] == "Antrian")])
+    total_siap = len(df[df["Status Antrian"] == "Siap Diambil"])
+    total_selesai = len(df[df["Status Antrian"] == "Selesai"])
+    total_batal = len(df[df["Status Antrian"] == "Batal"])
 
-    if status_menu == "Antrian":
+    colA, colB, colC, colD = st.columns(4)
+    with colA:
+        st.markdown(f'<div class="status-card" style="background-color:#FFA500;">🕒<br>Antrian<br>{total_antrian}</div>', unsafe_allow_html=True)
+    with colB:
+        st.markdown(f'<div class="status-card" style="background-color:#0A84FF;">📢<br>Siap Diambil<br>{total_siap}</div>', unsafe_allow_html=True)
+    with colC:
+        st.markdown(f'<div class="status-card" style="background-color:#34C759;">✅<br>Selesai<br>{total_selesai}</div>', unsafe_allow_html=True)
+    with colD:
+        st.markdown(f'<div class="status-card" style="background-color:#FF3B30;">❌<br>Batal<br>{total_batal}</div>', unsafe_allow_html=True)
+
+    # ---------------- MENU STATUS ----------------
+    status_list = ["Antrian", "Siap Diambil", "Selesai", "Batal"]
+    selected_status = st.session_state.get("selected_status", "Antrian")
+
+    menu_html = ""
+    for s in status_list:
+        active_class = "menu-btn-active" if s == selected_status else ""
+        menu_html += f"""<span class="menu-btn {active_class}" onclick="window.location.href='?status={s}'">{s}</span>"""
+
+    st.markdown(menu_html, unsafe_allow_html=True)
+
+    # Ambil status dari URL param (untuk navigasi seperti tab)
+    query_params = st.query_params
+    if "status" in query_params:
+        selected_status = query_params["status"]
+        st.session_state["selected_status"] = selected_status
+
+    # Filter status
+    if selected_status == "Antrian":
         df = df[(df["Status Antrian"] == "") | (df["Status Antrian"] == "Antrian")]
     else:
-        df = df[df["Status Antrian"] == status_menu]
+        df = df[df["Status Antrian"] == selected_status]
 
     # ---------------- FILTER ----------------
     st.markdown("### 📅 Filter Data")
@@ -161,7 +219,7 @@ def show():
         q_lower = q.lower()
         df = df[df["Nama Pelanggan"].astype(str).str.lower().str.contains(q_lower) | df["No Nota"].astype(str).str.lower().str.contains(q_lower)]
 
-    st.markdown(f"Menampilkan **{len(df)} data**.")
+    st.markdown(f"Menampilkan **{len(df)} data** untuk status **{selected_status}**.")
 
     # ---------------- LIST ----------------
     for idx, row in df.iterrows():
@@ -174,17 +232,16 @@ def show():
         jenis_existing = row["Jenis Transaksi"] or "Cash"
         status_antrian = row["Status Antrian"]
 
-        with st.expander(f"{no_nota} — {nama} — {barang} ({status_antrian or 'Antrian'})", expanded=False):
-            st.write(f"📅 Tanggal Masuk: {row['Tanggal Masuk']}")
-            st.write(f"👤 Nama: {nama}")
-            st.write(f"📞 No HP: {no_hp}")
-            st.write(f"🧾 Barang: {barang}")
-
+        with st.expander(f"🧾 {no_nota} — {nama} — {barang} ({status_antrian or 'Antrian'})", expanded=False):
             col1, col2 = st.columns(2)
             with col1:
-                harga_jasa_input = st.text_input("Harga Jasa (Rp)", value=str(harga_jasa_existing).replace("Rp","").replace(".",""), key=f"hj_{no_nota}")
-                harga_modal_input = st.text_input("Harga Modal (Rp)", value=str(harga_modal_existing).replace("Rp","").replace(".",""), key=f"hm_{no_nota}")
+                st.write(f"📅 Tanggal Masuk: {row['Tanggal Masuk']}")
+                st.write(f"👤 Nama: {nama}")
+                st.write(f"📞 No HP: {no_hp}")
+                st.write(f"🧰 Barang: {barang}")
             with col2:
+                harga_jasa_input = st.text_input("💰 Harga Jasa (Rp)", value=str(harga_jasa_existing).replace("Rp","").replace(".",""), key=f"hj_{no_nota}")
+                harga_modal_input = st.text_input("🧾 Harga Modal (Rp)", value=str(harga_modal_existing).replace("Rp","").replace(".",""), key=f"hm_{no_nota}")
                 jenis_transaksi = st.radio("Jenis Transaksi:", ["Cash", "Transfer"], index=0 if str(jenis_existing).lower()!="transfer" else 1, key=f"jenis_{no_nota}", horizontal=True)
 
             hj_num = int(harga_jasa_input or 0)
