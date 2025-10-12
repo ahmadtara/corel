@@ -92,7 +92,7 @@ with st.sidebar:
 if not st.session_state.logged_in:
     if selected == "🧾 Order":
         Order.show()
-    elif selected == "✅ Konfirmasi Pelanggan":
+    elif selected == "✅ Pelanggan":
         Pelanggan.show()
     elif selected == "💸 Pengeluaran":
         Expense.show()
