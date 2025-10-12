@@ -310,7 +310,16 @@ def show():
         per_page = 25
         total = len(df_tab)
         pages = (total - 1) // per_page + 1
-        page = st.number_input("Halaman", min_value=1, max_value=pages, value=1, step=1, format="%d")
+        page = st.number_input(
+            f"Halaman ({active_status_label})",
+            min_value=1,
+            max_value=pages,
+            value=1,
+            step=1,
+            format="%d",
+            key=f"page_{active_status_label}"
+        )
+
         start = (page - 1) * per_page
         end = start + per_page
         df_slice = df_tab.iloc[start:end].reset_index(drop=True)
