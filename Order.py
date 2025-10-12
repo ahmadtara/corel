@@ -1,4 +1,3 @@
-# ===================== ORDER.PY (v7.0 - CACHED WIB + REFRESH + AUTO STOK) =====================
 import streamlit as st
 import pandas as pd
 import datetime
@@ -8,6 +7,8 @@ from oauth2client.service_account import ServiceAccountCredentials
 import json
 import requests
 import urllib.parse
+from Setting import load_config
+import streamlit.components.v1 as components
 
 # ================= CONFIG ==================
 SPREADSHEET_ID = "1OsnO1xQFniBtEFCvGksR2KKrPt-9idE-w6-poM-wXKU"
@@ -27,6 +28,7 @@ def authenticate_google():
     credentials = ServiceAccountCredentials.from_json_keyfile_dict(creds_dict, scope)
     client = gspread.authorize(credentials)
     return client
+
 
 def get_worksheet(sheet_name):
     client = authenticate_google()
@@ -68,6 +70,7 @@ def load_local_data():
         "Jenis Transaksi", "uploaded"
     ])
 
+
 def save_local_data(df):
     df.to_csv(DATA_FILE, index=False)
 
@@ -100,6 +103,7 @@ def append_to_sheet(sheet_name, data: dict):
     row = [data.get(h, "") for h in headers]
     ws.append_row(row, value_input_option="USER_ENTERED")
 
+
 @st.cache_data(ttl=120)
 def read_sheet_cached(sheet_name):
     """Cache pembacaan sheet selama 2 menit untuk mempercepat load."""
@@ -122,6 +126,105 @@ def sync_local_cache():
                 st.warning(f"Gagal upload {row['No Nota']}: {e}")
         save_local_data(df)
         st.success("✅ Sinkronisasi cache selesai!")
+
+# =============== HELPERS PRINT NOTE ===============
+def generate_nota_html(kind: str, cfg: dict, data: dict, now_dt: datetime.datetime, paper_height_mm: int = 40) -> str:
+    """
+    kind: 'SERVIS' or 'BARANG'
+    data: dict with fields depending on kind
+    paper_height_mm: integer height in mm (58x40 default)
+    Returns full HTML string ready to pass to components.html
+    """
+    # common header
+    header = f"{cfg['nama_toko']}
+{cfg['alamat']}
+HP: {cfg['telepon']}
+"
+
+    if kind == 'SERVIS':
+        body = f"""
+No Nota : {data.get('No Nota')}
+Pelanggan : {data.get('Nama Pelanggan')}
+Tanggal Masuk : {data.get('Tanggal Masuk')}
+Estimasi Selesai : {data.get('Estimasi Selesai')}
+------------------------------
+Barang : {data.get('Barang')}
+Kerusakan : {data.get('Kerusakan')}
+Kelengkapan : {data.get('Kelengkapan')}
+------------------------------
+Harga Jasa : {data.get('Harga Jasa')}
+Status     : {data.get('Status')}
+"""
+    else:  # BARANG
+        body = f"""
+No Nota : {data.get('No Nota')}
+Tanggal : {data.get('Tanggal')}
+Barang  : {data.get('Nama Barang')}
+Qty     : {data.get('Qty')}
+Harga   : Rp {data.get('Harga Jual'):,.0f}
+Total   : Rp {data.get('Total'):,.0f}
+"""
+
+    footer = f"
+Terima kasih!
+=================================
+(Struk dibuat pada {now_dt.strftime('%d/%m/%Y %H:%M')})
+"
+
+    html = f"""
+<html>
+<head>
+<meta charset="utf-8">
+<style>
+@page {{
+    size: 58mm {paper_height_mm}mm;
+    margin: 0;
+}}
+#nota_struk {{
+    visibility: hidden;
+    width: 58mm;
+    font-family: monospace;
+    white-space: pre-wrap;
+    line-height: 1.15;
+    padding: 4px;
+    box-sizing: border-box;
+}}
+@media print {{
+    body * {{ visibility: hidden; }}
+    #nota_struk, #nota_struk * {{ visibility: visible; }}
+    #nota_struk {{
+        position: absolute;
+        left: 0;
+        top: 0;
+        width: 58mm;
+    }}
+}}
+</style>
+</head>
+<body>
+<div id="nota_struk">
+{header}
+------------------------------
+{body}
+{footer}
+</div>
+
+<script>
+window.onload = function() {{
+    setTimeout(function() {{
+        // === PRINT OTOMATIS STRUK (JANGAN DIHAPUS) ===
+        window.print();
+        setTimeout(function() {{
+            var el = document.getElementById('nota_struk');
+            if (el) {{ el.parentNode.removeChild(el); }}
+        }}, 500);
+    }}, 200);
+}};
+</script>
+</body>
+</html>
+"""
+    return html
 
 # =============== PAGE APP ===============
 def show():
@@ -215,6 +318,11 @@ Terima Kasih 🙏
             wa_link = f"https://wa.me/{hp}?text={requests.utils.quote(msg)}"
             st.markdown(f"[📲 KIRIM NOTA SERVIS VIA WHATSAPP]({wa_link})", unsafe_allow_html=True)
 
+            # === Generate and trigger print for SERVIS (58x40) ===
+            now_dt = datetime.datetime.now()
+            nota_html = generate_nota_html('SERVIS', cfg, service_data, now_dt, paper_height_mm=40)
+            components.html(nota_html, height=10, scrolling=False)
+
     # --------------------------------------
     # TAB 2 : TRANSAKSI BARANG
     # --------------------------------------
@@ -304,6 +412,11 @@ Terima kasih sudah berbelanja!
                     wa_link = f"https://wa.me/{hp}?text={requests.utils.quote(msg)}"
                     st.markdown(f"[📲 KIRIM NOTA VIA WHATSAPP]({wa_link})", unsafe_allow_html=True)
 
+                # === Generate and trigger print for BARANG (58x40) ===
+                now_dt = datetime.datetime.now()
+                nota_html = generate_nota_html('BARANG', cfg, transaksi_data, now_dt, paper_height_mm=40)
+                components.html(nota_html, height=10, scrolling=False)
+
         # === Input manual ===
         if pilihan_input == "✍️ Input Manual":
             nama_barang_manual = st.text_input("Nama Barang")
@@ -357,6 +470,11 @@ Terima kasih sudah berbelanja!
                         elif not hp.startswith("62"): hp = "62" + hp
                         wa_link = f"https://wa.me/{hp}?text={requests.utils.quote(msg)}"
                         st.markdown(f"[📲 KIRIM NOTA VIA WHATSAPP]({wa_link})", unsafe_allow_html=True)
+
+                    # === Generate and trigger print for BARANG (58x40) ===
+                    now_dt = datetime.datetime.now()
+                    nota_html = generate_nota_html('BARANG', cfg, transaksi_data, now_dt, paper_height_mm=40)
+                    components.html(nota_html, height=10, scrolling=False)
 
 if __name__ == "__main__":
     show()
