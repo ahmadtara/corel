@@ -1,4 +1,6 @@
-# pelanggan.py (v1.5) - Menu Antrian / Siap Diambil / Selesai / Batal
+# ===================== pelanggan.py (v1.6) =====================
+# + Tambahan: Status Antrian (Antrian / Dalam Proses / QC / Selesai)
+
 import streamlit as st
 import pandas as pd
 import datetime
@@ -106,6 +108,7 @@ def render_data(df, status_filter, cfg):
         nama = row.get("Nama Pelanggan", "")
         barang = row.get("Barang", "")
         status = row.get("Status", "")
+        status_antrian_existing = row.get("Status Antrian", "Antrian")
         harga_jasa_existing = row.get("Harga Jasa", "")
         harga_modal_existing = row.get("Harga Modal", "")
         jenis_existing = row.get("Jenis Transaksi", "Cash") if pd.notna(row.get("Jenis Transaksi", "")) else "Cash"
@@ -117,6 +120,14 @@ def render_data(df, status_filter, cfg):
             st.write(f"**Barang:** {barang}")
             st.write(f"**Status:** {status}")
             st.write(f"**No HP:** {no_hp}")
+
+            # Dropdown status antrian (teknisi)
+            status_antrian = st.selectbox(
+                "Status Antrian",
+                ["Antrian", "Dalam Proses", "QC", "Selesai"],
+                index=["Antrian", "Dalam Proses", "QC", "Selesai"].index(status_antrian_existing) if status_antrian_existing in ["Antrian", "Dalam Proses", "QC", "Selesai"] else 0,
+                key=f"antrian_{no_nota}"
+            )
 
             # input harga hanya di tab Antrian
             if status_filter == "Antrian":
@@ -144,7 +155,8 @@ def render_data(df, status_filter, cfg):
                         "Harga Jasa": hj_str,
                         "Harga Modal": hm_str,
                         "Jenis Transaksi": jenis_transaksi,
-                        "Status": "Siap Diambil"
+                        "Status": "Siap Diambil",
+                        "Status Antrian": status_antrian
                     }
                     ok = update_sheet_row_by_nota(SHEET_SERVIS, no_nota, updates)
                     if ok:
@@ -155,18 +167,26 @@ def render_data(df, status_filter, cfg):
 
             # tombol aksi di tab Siap Diambil
             elif status_filter == "Siap Diambil":
-                col_a, col_b = st.columns(2)
+                col_a, col_b, col_c = st.columns(3)
                 if col_a.button("✔️ Selesai", key=f"selesai_{no_nota}"):
-                    update_sheet_row_by_nota(SHEET_SERVIS, no_nota, {"Status": "Selesai"})
+                    update_sheet_row_by_nota(SHEET_SERVIS, no_nota, {"Status": "Selesai", "Status Antrian": status_antrian})
                     st.success(f"Nota {no_nota} ditandai Selesai.")
                     st.cache_data.clear()
                     st.rerun()
                 if col_b.button("❌ Batal", key=f"batal_{no_nota}"):
-                    update_sheet_row_by_nota(SHEET_SERVIS, no_nota, {"Status": "Batal"})
+                    update_sheet_row_by_nota(SHEET_SERVIS, no_nota, {"Status": "Batal", "Status Antrian": status_antrian})
                     st.warning(f"Nota {no_nota} ditandai Batal.")
                     st.cache_data.clear()
                     st.rerun()
 
+            # Update status antrian tanpa ganti status utama
+            if st.button("💾 Simpan Status Antrian", key=f"saveantrian_{no_nota}"):
+                update_sheet_row_by_nota(SHEET_SERVIS, no_nota, {"Status Antrian": status_antrian})
+                st.success(f"Status Antrian untuk {no_nota} diperbarui ke {status_antrian}.")
+                st.cache_data.clear()
+                st.rerun()
+
+# ------------------- WA -------------------
 def send_wa(no_hp, nama, no_nota, hj_str, jenis_transaksi, cfg):
     msg = f"""Assalamualaikum {nama},
 
@@ -214,7 +234,7 @@ def show():
         return
 
     # pastikan kolom penting ada
-    for col in ["Tanggal Masuk","No Nota","Nama Pelanggan","No HP","Barang","Status","Harga Jasa","Harga Modal","Jenis Transaksi"]:
+    for col in ["Tanggal Masuk","No Nota","Nama Pelanggan","No HP","Barang","Status","Harga Jasa","Harga Modal","Jenis Transaksi","Status Antrian"]:
         if col not in df.columns:
             df[col] = ""
 
