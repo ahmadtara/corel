@@ -1,6 +1,4 @@
-# ===================== pelanggan.py (v1.6) =====================
-# + Tambahan: Status Antrian (Antrian / Dalam Proses / QC / Selesai)
-
+# pelanggan.py (v1.7) - Status Antrian Saja + WA Otomatis
 import streamlit as st
 import pandas as pd
 import datetime
@@ -45,10 +43,11 @@ def read_sheet(sheet_name):
 def update_sheet_row_by_nota(sheet_name, nota, updates: dict):
     try:
         ws = get_worksheet(sheet_name)
+        cell = None
         try:
             cell = ws.find(str(nota))
-        except Exception:
-            cell = None
+        except:
+            pass
 
         if not cell:
             headers = ws.row_values(1)
@@ -61,7 +60,7 @@ def update_sheet_row_by_nota(sheet_name, nota, updates: dict):
                         break
 
         if not cell:
-            raise ValueError(f"Baris dengan No Nota '{nota}' tidak ditemukan di sheet '{sheet_name}'.")
+            raise ValueError(f"Tidak ditemukan No Nota '{nota}'")
 
         row = cell.row
         headers = ws.row_values(1)
@@ -96,103 +95,12 @@ def get_waktu_jakarta():
     tz = datetime.timezone(datetime.timedelta(hours=7))
     return datetime.datetime.now(tz)
 
-# ------------------- VIEW DATA -------------------
-def render_data(df, status_filter, cfg):
-    filtered = df[df["Status"] == status_filter] if status_filter != "Semua" else df
-    if filtered.empty:
-        st.info(f"Belum ada data di status **{status_filter}**.")
-        return
-
-    for idx, row in filtered.iterrows():
-        no_nota = row.get("No Nota", "")
-        nama = row.get("Nama Pelanggan", "")
-        barang = row.get("Barang", "")
-        status = row.get("Status", "")
-        status_antrian_existing = row.get("Status Antrian", "Antrian")
-        harga_jasa_existing = row.get("Harga Jasa", "")
-        harga_modal_existing = row.get("Harga Modal", "")
-        jenis_existing = row.get("Jenis Transaksi", "Cash") if pd.notna(row.get("Jenis Transaksi", "")) else "Cash"
-        no_hp = row.get("No HP", "")
-
-        with st.expander(f"{no_nota} — {nama} — {barang} ({status})", expanded=False):
-            st.write(f"**No Nota:** {no_nota}")
-            st.write(f"**Nama:** {nama}")
-            st.write(f"**Barang:** {barang}")
-            st.write(f"**Status:** {status}")
-            st.write(f"**No HP:** {no_hp}")
-
-            # Dropdown status antrian (teknisi)
-            status_antrian = st.selectbox(
-                "Status Antrian",
-                ["Antrian", "Dalam Proses", "QC", "Selesai"],
-                index=["Antrian", "Dalam Proses", "QC", "Selesai"].index(status_antrian_existing) if status_antrian_existing in ["Antrian", "Dalam Proses", "QC", "Selesai"] else 0,
-                key=f"antrian_{no_nota}"
-            )
-
-            # input harga hanya di tab Antrian
-            if status_filter == "Antrian":
-                col1, col2 = st.columns(2)
-                with col1:
-                    harga_jasa_input = st.text_input("Harga Jasa", value=str(harga_jasa_existing).replace("Rp","").replace(".",""), key=f"hj_{no_nota}")
-                    harga_modal_input = st.text_input("Harga Modal", value=str(harga_modal_existing).replace("Rp","").replace(".",""), key=f"hm_{no_nota}")
-                with col2:
-                    jenis_transaksi = st.radio("Jenis Transaksi:", ["Cash", "Transfer"], index=0 if str(jenis_existing).lower()!="transfer" else 1, key=f"jenis_{no_nota}", horizontal=True)
-
-                if st.button("✅ Simpan & Kirim WA", key=f"kirim_{no_nota}"):
-                    try:
-                        hj_num = int(harga_jasa_input.replace(".","").replace(",","").strip()) if harga_jasa_input.strip() else 0
-                    except:
-                        hj_num = 0
-                    try:
-                        hm_num = int(harga_modal_input.replace(".","").replace(",","").strip()) if harga_modal_input.strip() else 0
-                    except:
-                        hm_num = 0
-
-                    hj_str = format_rp(hj_num) if hj_num else ""
-                    hm_str = format_rp(hm_num) if hm_num else ""
-
-                    updates = {
-                        "Harga Jasa": hj_str,
-                        "Harga Modal": hm_str,
-                        "Jenis Transaksi": jenis_transaksi,
-                        "Status": "Siap Diambil",
-                        "Status Antrian": status_antrian
-                    }
-                    ok = update_sheet_row_by_nota(SHEET_SERVIS, no_nota, updates)
-                    if ok:
-                        st.success(f"✅ Nota {no_nota} dipindahkan ke 'Siap Diambil'.")
-                        send_wa(no_hp, nama, no_nota, hj_str, jenis_transaksi, cfg)
-                        st.cache_data.clear()
-                        st.rerun()
-
-            # tombol aksi di tab Siap Diambil
-            elif status_filter == "Siap Diambil":
-                col_a, col_b, col_c = st.columns(3)
-                if col_a.button("✔️ Selesai", key=f"selesai_{no_nota}"):
-                    update_sheet_row_by_nota(SHEET_SERVIS, no_nota, {"Status": "Selesai", "Status Antrian": status_antrian})
-                    st.success(f"Nota {no_nota} ditandai Selesai.")
-                    st.cache_data.clear()
-                    st.rerun()
-                if col_b.button("❌ Batal", key=f"batal_{no_nota}"):
-                    update_sheet_row_by_nota(SHEET_SERVIS, no_nota, {"Status": "Batal", "Status Antrian": status_antrian})
-                    st.warning(f"Nota {no_nota} ditandai Batal.")
-                    st.cache_data.clear()
-                    st.rerun()
-
-            # Update status antrian tanpa ganti status utama
-            if st.button("💾 Simpan Status Antrian", key=f"saveantrian_{no_nota}"):
-                update_sheet_row_by_nota(SHEET_SERVIS, no_nota, {"Status Antrian": status_antrian})
-                st.success(f"Status Antrian untuk {no_nota} diperbarui ke {status_antrian}.")
-                st.cache_data.clear()
-                st.rerun()
-
-# ------------------- WA -------------------
-def send_wa(no_hp, nama, no_nota, hj_str, jenis_transaksi, cfg):
+def send_wa(no_hp, nama, no_nota, total_biaya, jenis_transaksi, cfg):
     msg = f"""Assalamualaikum {nama},
 
-Unit anda dengan nomor nota *{no_nota}* sudah *selesai servis* dan siap untuk diambil.
+Unit anda dengan nomor nota *{no_nota}* sudah selesai dan siap untuk diambil.
 
-Total Biaya Servis: *{hj_str if hj_str else '(Cek Dulu)'}*
+Total Biaya Servis: *{total_biaya if total_biaya else '(Cek Dulu)'}*
 
 Pembayaran: *{jenis_transaksi}*
 
@@ -222,7 +130,7 @@ Terima Kasih 🙏
 # ------------------- APP -------------------
 def show():
     cfg = load_config()
-    st.title("📱 Pelanggan — Antrian & WA Otomatis")
+    st.title("📱 Pelanggan — Status Antrian + WA Otomatis")
 
     if st.button("🔄 Reload Data Sheet"):
         st.cache_data.clear()
@@ -233,21 +141,101 @@ def show():
         st.info("Belum ada data di sheet Servis.")
         return
 
-    # pastikan kolom penting ada
-    for col in ["Tanggal Masuk","No Nota","Nama Pelanggan","No HP","Barang","Status","Harga Jasa","Harga Modal","Jenis Transaksi","Status Antrian"]:
+    for col in ["Tanggal Masuk","No Nota","Nama Pelanggan","No HP","Barang","Status Antrian","Harga Jasa","Harga Modal","Jenis Transaksi"]:
         if col not in df.columns:
             df[col] = ""
 
-    tab1, tab2, tab3, tab4 = st.tabs(["🧾 Antrian", "📦 Siap Diambil", "✅ Selesai", "🚫 Batal"])
+    # ---------------- FILTER ----------------
+    st.markdown("### 📅 Filter Data")
+    today = get_waktu_jakarta().date()
+    filter_tipe = st.radio("Pilih Jenis Filter:", ["Semua", "Per Hari", "Per Bulan"], horizontal=True)
+    df["Tanggal_parsed"] = pd.to_datetime(df["Tanggal Masuk"], errors="coerce", dayfirst=True)
 
-    with tab1:
-        render_data(df, "Antrian", cfg)
-    with tab2:
-        render_data(df, "Siap Diambil", cfg)
-    with tab3:
-        render_data(df, "Selesai", cfg)
-    with tab4:
-        render_data(df, "Batal", cfg)
+    if filter_tipe == "Per Hari":
+        tanggal_pilih = st.date_input("Pilih Tanggal:", today)
+        df = df[df["Tanggal_parsed"].dt.date == tanggal_pilih]
+    elif filter_tipe == "Per Bulan":
+        tahun = st.number_input("Tahun", value=today.year, step=1)
+        bulan = st.number_input("Bulan (1–12)", value=today.month, min_value=1, max_value=12, step=1)
+        df = df[(df["Tanggal_parsed"].dt.year == tahun) & (df["Tanggal_parsed"].dt.month == bulan)]
+
+    # ---------------- PENCARIAN ----------------
+    st.markdown("### 🔎 Cari Pelanggan")
+    q = st.text_input("Cari berdasarkan Nama atau No Nota")
+
+    if q.strip():
+        q_lower = q.strip().lower()
+        mask = df["Nama Pelanggan"].astype(str).str.lower().str.contains(q_lower) | df["No Nota"].astype(str).str.lower().str.contains(q_lower)
+        results = df[mask].copy()
+        if results.empty:
+            st.info("Tidak ditemukan pelanggan dengan kata kunci tersebut.")
+            return
+    else:
+        results = df.tail(50).copy()
+
+    st.markdown(f"Menampilkan **{len(results)} hasil**.")
+    for idx, row in results.iterrows():
+        no_nota = row.get("No Nota", "")
+        nama = row.get("Nama Pelanggan", "")
+        barang = row.get("Barang", "")
+        status_antrian = row.get("Status Antrian", "")
+        harga_jasa_existing = row.get("Harga Jasa", "")
+        harga_modal_existing = row.get("Harga Modal", "")
+        jenis_existing = row.get("Jenis Transaksi", "Cash") if pd.notna(row.get("Jenis Transaksi", "")) else "Cash"
+        no_hp = row.get("No HP", "")
+
+        with st.expander(f"{no_nota} — {nama} — {barang} ({status_antrian})", expanded=False):
+            st.write(f"**No Nota:** {no_nota}")
+            st.write(f"**Nama:** {nama}")
+            st.write(f"**Barang:** {barang}")
+            st.write(f"**Status Antrian:** {status_antrian}")
+            st.write(f"**No HP:** {no_hp}")
+
+            col1, col2 = st.columns(2)
+            with col1:
+                harga_jasa_input = st.text_input("Harga Jasa (Rp):", value=str(harga_jasa_existing).replace("Rp","").replace(".",""), key=f"hj_{no_nota}")
+                harga_modal_input = st.text_input("Harga Modal (Rp):", value=str(harga_modal_existing).replace("Rp","").replace(".",""), key=f"hm_{no_nota}")
+            with col2:
+                jenis_transaksi = st.radio("Jenis Transaksi:", ["Cash", "Transfer"], index=0 if str(jenis_existing).lower()!="transfer" else 1, key=f"jenis_{no_nota}", horizontal=True)
+
+            # ----------- Tombol aksi ----------- #
+            if status_antrian == "Antrian":
+                if st.button("✅ Simpan & Kirim WA", key=f"kirim_{no_nota}"):
+                    try:
+                        hj_num = int(str(harga_jasa_input).replace(".","").replace(",","").strip()) if harga_jasa_input.strip() else 0
+                    except:
+                        hj_num = 0
+                    try:
+                        hm_num = int(str(harga_modal_input).replace(".","").replace(",","").strip()) if harga_modal_input.strip() else 0
+                    except:
+                        hm_num = 0
+
+                    hj_str = format_rp(hj_num) if hj_num else ""
+                    hm_str = format_rp(hm_num) if hm_num else ""
+
+                    updates = {
+                        "Harga Jasa": hj_str,
+                        "Harga Modal": hm_str,
+                        "Jenis Transaksi": jenis_transaksi,
+                        "Status Antrian": "Siap Diambil"
+                    }
+
+                    if update_sheet_row_by_nota(SHEET_SERVIS, no_nota, updates):
+                        st.success(f"✅ Nota {no_nota} diubah ke 'Siap Diambil'")
+                        send_wa(no_hp, nama, no_nota, hj_str, jenis_transaksi, cfg)
+                    else:
+                        st.error("Gagal update data.")
+
+            elif status_antrian == "Siap Diambil":
+                c1, c2 = st.columns(2)
+                with c1:
+                    if st.button("✔️ Selesai", key=f"selesai_{no_nota}"):
+                        if update_sheet_row_by_nota(SHEET_SERVIS, no_nota, {"Status Antrian": "Selesai"}):
+                            st.success(f"✅ Nota {no_nota} diubah ke 'Selesai'")
+                with c2:
+                    if st.button("❌ Batal", key=f"batal_{no_nota}"):
+                        if update_sheet_row_by_nota(SHEET_SERVIS, no_nota, {"Status Antrian": "Batal"}):
+                            st.warning(f"⚠️ Nota {no_nota} diubah ke 'Batal'")
 
 if __name__ == "__main__":
     show()
