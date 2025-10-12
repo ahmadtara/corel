@@ -193,22 +193,65 @@ def show():
     st.markdown("")  # spacing
 
     # ---------------- TAB BAR (modern, spaced) ----------------
-    tabs = ["Antrian", "Siap Diambil", "Selesai", "Batal"]
+    # ---------------- TAB BAR (clean underline style) ----------------
+    TAB_BAR_STYLE = """
+    <style>
+    .tab-menu { display: flex; gap: 30px; border-bottom: 1.5px solid #eee; padding-bottom: 5px; margin-bottom: 20px; }
+    .tab-item {
+        cursor: pointer;
+        font-weight: 500;
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        padding-bottom: 6px;
+        color: #444;
+        transition: all 0.2s ease;
+    }
+    .tab-item:hover {
+        color: #111;
+    }
+    .tab-active {
+        color: #e53935 !important;
+        font-weight: 600;
+        border-bottom: 2.5px solid #e53935;
+    }
+    .tab-icon { font-size: 18px; }
+    </style>
+    """
+    st.markdown(TAB_BAR_STYLE, unsafe_allow_html=True)
+    
+    tabs = [
+        ("🕒", "Antrian"),
+        ("📢", "Siap Diambil"),
+        ("✅", "Selesai"),
+        ("❌", "Batal")
+    ]
+    
     if "active_tab" not in st.session_state:
         st.session_state.active_tab = "Antrian"
-
-    cols = st.columns(len(tabs) + 1, gap="small")
-    for i, t in enumerate(tabs):
-        is_active = (st.session_state.active_tab == t)
-        btn_label = t
-        # draw as button but styled via markdown class switch
-        if cols[i].button(btn_label):
-            st.session_state.active_tab = t
-
-    # small spacer to align underline look
-    st.markdown("<div style='height:6px'></div>", unsafe_allow_html=True)
-
+    
+    tab_html = '<div class="tab-menu">'
+    for icon, t in tabs:
+        active_class = "tab-item tab-active" if st.session_state.active_tab == t else "tab-item"
+        tab_html += f'<div class="{active_class}" onclick="window.parent.postMessage({{type: \'switch_tab\', tab: \'{t}\' }}, \'*\')">{icon} {t}</div>'
+    tab_html += '</div>'
+    
+    st.markdown(tab_html, unsafe_allow_html=True)
+    
+    # JavaScript bridge to switch tab
+    st.markdown("""
+    <script>
+    window.addEventListener('message', (event) => {
+        if (event.data.type === 'switch_tab') {
+            const tab = event.data.tab;
+            window.parent.postMessage({ type: 'streamlit:setSessionState', state: { active_tab: tab } }, '*');
+        }
+    });
+    </script>
+    """, unsafe_allow_html=True)
+    
     active_status = st.session_state.active_tab
+
 
     # ---------------- FILTER area (ke bawah) ----------------
     st.markdown("### 📅 Filter Data")
