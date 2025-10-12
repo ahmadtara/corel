@@ -1,4 +1,4 @@
-# ========================== app.py (v3.1 - Bottom Navigation Android Style) ==========================
+# ========================== app.py (v3.3 - Bottom Nav with Full Admin Menu) ==========================
 import streamlit as st
 from streamlit_option_menu import option_menu
 import Order, Report, Setting, Admin, Expense, Pelanggan
@@ -40,10 +40,8 @@ def logout_button():
 # ---------------------- CSS UNTUK MENU BAWAH ----------------------
 st.markdown("""
     <style>
-    /* Hilangkan sidebar */
     section[data-testid="stSidebar"] {display: none;}
 
-    /* Posisi menu bawah */
     div[data-testid="stHorizontalBlock"] {
         position: fixed;
         bottom: 0;
@@ -56,7 +54,6 @@ st.markdown("""
         padding: 0.2rem 0;
     }
 
-    /* Gaya ikon menu */
     ul.nav {
         display: flex !important;
         justify-content: space-around;
@@ -80,7 +77,6 @@ st.markdown("""
         font-weight: 600;
     }
 
-    /* Tambah jarak konten agar tidak ketutupan menu bawah */
     .block-container {
         padding-bottom: 5rem;
     }
@@ -91,8 +87,8 @@ st.markdown("""
 if not st.session_state.logged_in:
     selected = option_menu(
         None,
-        ["🏠 Home", "🧾 Order", "✅ Pelanggan", "💸 Pengeluaran", "🔐 Login"],
-        icons=["house", "file-earmark-plus", "person-check", "cash-coin", "lock"],
+        ["🧾 Order", "✅ Pelanggan", "💸 Pengeluaran", "🔐 Login"],
+        icons=["file-earmark-plus", "person-check", "cash-coin", "lock"],
         menu_icon="cast",
         default_index=0,
         orientation="horizontal"
@@ -100,8 +96,8 @@ if not st.session_state.logged_in:
 else:
     selected = option_menu(
         None,
-        ["🏠 Home", "🧾 Order", "📈 Report", "⚙️ Setting", "🚪 Logout"],
-        icons=["house", "file-earmark-plus", "bar-chart-line", "gear", "door-closed"],
+        ["🧾 Order", "✅ Pelanggan", "💸 Pengeluaran", "📈 Report", "📦 Admin", "⚙️ Setting", "🚪 Logout"],
+        icons=["file-earmark-plus", "person-check", "cash-coin", "bar-chart-line", "box-seam", "gear", "door-closed"],
         menu_icon="cast",
         default_index=0,
         orientation="horizontal"
@@ -109,10 +105,7 @@ else:
 
 # ---------------------- ROUTING HALAMAN ----------------------
 if not st.session_state.logged_in:
-    if selected == "🏠 Home":
-        st.title("📱 Selamat Datang di Servis Center")
-        st.info("Gunakan menu bawah untuk navigasi.")
-    elif selected == "🧾 Order":
+    if selected == "🧾 Order":
         Order.show()
     elif selected == "✅ Pelanggan":
         Pelanggan.show()
@@ -120,15 +113,17 @@ if not st.session_state.logged_in:
         Expense.show()
     elif selected == "🔐 Login":
         login_form()
-
 else:
-    if selected == "🏠 Home":
-        st.title("📊 Dashboard Admin")
-        st.success("Halo Admin 👋")
-    elif selected == "🧾 Order":
+    if selected == "🧾 Order":
         Order.show()
+    elif selected == "✅ Pelanggan":
+        Pelanggan.show()
+    elif selected == "💸 Pengeluaran":
+        Expense.show()
     elif selected == "📈 Report":
         Report.show()
+    elif selected == "📦 Admin":
+        Admin.show()
     elif selected == "⚙️ Setting":
         Setting.show()
     elif selected == "🚪 Logout":
