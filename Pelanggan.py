@@ -284,23 +284,24 @@ def show():
 
     st.markdown(f"Menampilkan **{len(df_view)} data** untuk status **{active_status}**.")
 
-    # ---------------- LIST (cards/expanders) ----------------
-    # Keep consistent order (latest at bottom) — show tail 200 as safety
-    if len(df_view) > 0:
+    if len(df_view) == 0:
+        st.info(f"📭 Belum ada data untuk status **{active_status}**.")
+    else:
         df_view = df_view.reset_index(drop=True)
+        for idx, row in df_view.iterrows():
+            no_nota = row.get("No Nota", "")
+            nama = row.get("Nama Pelanggan", "")
+            barang = row.get("Barang", "")
+            no_hp = row.get("No HP", "")
+            status_antrian = (row.get("Status Antrian") or "").strip()
+            harga_jasa_existing = row.get("Harga Jasa", "")
+            harga_modal_existing = row.get("Harga Modal", "")
+            jenis_existing = row.get("Jenis Transaksi") if pd.notna(row.get("Jenis Transaksi")) else "Cash"
+    
+            header_label = f"🧾 {no_nota} — {nama} — {barang} ({status_antrian or 'Antrian'})"
+            with st.expander(header_label, expanded=False):
+                # ... (isi card seperti sebelumnya)
 
-    for idx, row in df_view.iterrows():
-        no_nota = row.get("No Nota", "")
-        nama = row.get("Nama Pelanggan", "")
-        barang = row.get("Barang", "")
-        no_hp = row.get("No HP", "")
-        status_antrian = (row.get("Status Antrian") or "").strip()
-        harga_jasa_existing = row.get("Harga Jasa", "")
-        harga_modal_existing = row.get("Harga Modal", "")
-        jenis_existing = row.get("Jenis Transaksi") if pd.notna(row.get("Jenis Transaksi")) else "Cash"
-
-        header_label = f"🧾 {no_nota} — {nama} — {barang} ({status_antrian or 'Antrian'})"
-        with st.expander(header_label, expanded=False):
             cL, cR = st.columns([2,1])
             with cL:
                 st.write(f"📅 **Tanggal Masuk:** {row.get('Tanggal Masuk','')}")
