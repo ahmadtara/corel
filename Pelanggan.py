@@ -283,10 +283,13 @@ def show():
         df_view = df[df["Status Antrian"].str.lower() == active_status.lower()]
 
     st.markdown(f"Menampilkan **{len(df_view)} data** untuk status **{active_status}**.")
-
-    if len(df_view) == 0:
-        st.info(f"📭 Belum ada data untuk status **{active_status}**.")
-    else:
+    
+        # if empty, show friendly message
+        if len(df_view) == 0:
+            st.info(f"📭 Belum ada data untuk status **{active_status}**.")
+            return
+    
+        # show entries
         df_view = df_view.reset_index(drop=True)
         for idx, row in df_view.iterrows():
             no_nota = row.get("No Nota", "")
@@ -300,32 +303,29 @@ def show():
     
             header_label = f"🧾 {no_nota} — {nama} — {barang} ({status_antrian or 'Antrian'})"
             with st.expander(header_label, expanded=False):
-                # ... (isi card seperti sebelumnya)
-
-            cL, cR = st.columns([2,1])
-            with cL:
-                st.write(f"📅 **Tanggal Masuk:** {row.get('Tanggal Masuk','')}")
-                st.write(f"👤 **Nama:** {nama}")
-                st.write(f"📞 **No HP:** {no_hp}")
-                st.write(f"🧰 **Barang:** {barang}")
-                st.write(f"📝 **Keterangan Status:** {status_antrian or 'Antrian'}")
-            with cR:
-                # Inputs (right column)
-                harga_jasa_input = st.text_input("Harga Jasa (Rp)", value=str(harga_jasa_existing).replace("Rp","").replace(".",""), key=f"hj_{no_nota}")
-                harga_modal_input = st.text_input("Harga Modal (Rp)", value=str(harga_modal_existing).replace("Rp","").replace(".",""), key=f"hm_{no_nota}")
-                jenis_transaksi = st.radio("Jenis Transaksi:", ["Cash","Transfer"], index=0 if str(jenis_existing).lower()!="transfer" else 1, key=f"jenis_{no_nota}", horizontal=True)
-
-            # parse prices safely
-            try:
-                hj_num = int(str(harga_jasa_input).replace(".","").replace(",","").strip()) if str(harga_jasa_input).strip() else 0
-            except:
-                hj_num = 0
-            try:
-                hm_num = int(str(harga_modal_input).replace(".","").replace(",","").strip()) if str(harga_modal_input).strip() else 0
-            except:
-                hm_num = 0
-            hj_str = format_rp(hj_num) if hj_num else ""
-            hm_str = format_rp(hm_num) if hm_num else ""
+                left, right = st.columns([2,1])
+                with left:
+                    st.write(f"📅 **Tanggal Masuk:** {row.get('Tanggal Masuk','')}")
+                    st.write(f"👤 **Nama:** {nama}")
+                    st.write(f"📞 **No HP:** {no_hp}")
+                    st.write(f"🧰 **Barang:** {barang}")
+                    st.write(f"📝 **Keterangan Status:** {status_antrian or 'Antrian'}")
+                with right:
+                    harga_jasa_input = st.text_input("Harga Jasa (Rp)", value=str(harga_jasa_existing).replace("Rp","").replace(".",""), key=f"hj_{no_nota}")
+                    harga_modal_input = st.text_input("Harga Modal (Rp)", value=str(harga_modal_existing).replace("Rp","").replace(".",""), key=f"hm_{no_nota}")
+                    jenis_transaksi = st.radio("Jenis Transaksi:", ["Cash","Transfer"], index=0 if str(jenis_existing).lower()!="transfer" else 1, key=f"jenis_{no_nota}", horizontal=True)
+    
+                # parse safely
+                try:
+                    hj_num = int(str(harga_jasa_input).replace(".","").replace(",","").strip()) if str(harga_jasa_input).strip() else 0
+                except:
+                    hj_num = 0
+                try:
+                    hm_num = int(str(harga_modal_input).replace(".","").replace(",","").strip()) if str(harga_modal_input).strip() else 0
+                except:
+                    hm_num = 0
+                hj_str = format_rp(hj_num) if hj_num else ""
+                hm_str = format_rp(hm_num) if hm_num else ""
 
             # -------- ACTIONS depending on status --------
             if (status_antrian == "" or status_antrian.lower() == "antrian") and active_status == "Antrian":
