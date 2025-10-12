@@ -1,20 +1,23 @@
-# ========================== app.py (v3.0 - Bottom Nav Style Android) ==========================
+# ========================== app.py (v3.1 - Bottom Navigation Android Style) ==========================
 import streamlit as st
-import streamlit.components.v1 as components
+from streamlit_option_menu import option_menu
 import Order, Report, Setting, Admin, Expense, Pelanggan
 
-# ---------------------- CONFIG ----------------------
-st.set_page_config(page_title="Servis Center", page_icon="🧾", layout="centered")
+# ---------------------- KONFIGURASI HALAMAN ----------------------
+st.set_page_config(
+    page_title="Servis Center",
+    page_icon="🧾",
+    layout="wide"
+)
 
+# ---------------------- LOGIN CONFIG ----------------------
 ADMIN_USERNAME = "admin"
 ADMIN_PASSWORD = "12345"
 
 if "logged_in" not in st.session_state:
     st.session_state.logged_in = False
-if "menu" not in st.session_state:
-    st.session_state.menu = "home"
 
-# ---------------------- LOGIN ----------------------
+# ---------------------- LOGIN FORM ----------------------
 def login_form():
     st.subheader("🔐 Login Admin")
     username = st.text_input("Username", key="login_user")
@@ -27,101 +30,106 @@ def login_form():
         else:
             st.error("❌ Username atau password salah!")
 
-# ---------------------- LOGOUT ----------------------
+# ---------------------- LOGOUT BUTTON ----------------------
 def logout_button():
     if st.button("🚪 Logout", use_container_width=True):
         st.session_state.logged_in = False
         st.success("Berhasil logout.")
         st.rerun()
 
-# ---------------------- RENDER PAGE ----------------------
-menu = st.session_state.menu
-
-if menu == "home":
-    st.markdown("## 🧺 Max Wash Laundry\nJl Kemang Utara No 40 Jakarta Selatan")
-    st.metric("Omset Hari Ini", "Rp 0")
-    st.columns(3)
-    st.button("Transaksi Baru", use_container_width=True, type="primary")
-    st.button("Pengeluaran", use_container_width=True)
-elif menu == "order":
-    Order.show()
-elif menu == "report":
-    Report.show()
-elif menu == "setting":
-    if not st.session_state.logged_in:
-        login_form()
-    else:
-        Setting.show()
-        logout_button()
-
-# ---------------------- BOTTOM NAVIGATION ----------------------
-st.markdown(
-    """
+# ---------------------- CSS UNTUK MENU BAWAH ----------------------
+st.markdown("""
     <style>
-    .bottom-nav {
+    /* Hilangkan sidebar */
+    section[data-testid="stSidebar"] {display: none;}
+
+    /* Posisi menu bawah */
+    div[data-testid="stHorizontalBlock"] {
         position: fixed;
         bottom: 0;
         left: 0;
-        right: 0;
-        height: 70px;
-        background-color: white;
+        width: 100%;
+        background-color: #fff;
         border-top: 1px solid #ddd;
-        display: flex;
+        z-index: 999;
+        text-align: center;
+        padding: 0.2rem 0;
+    }
+
+    /* Gaya ikon menu */
+    ul.nav {
+        display: flex !important;
         justify-content: space-around;
-        align-items: center;
-        box-shadow: 0 -2px 8px rgba(0,0,0,0.1);
-        z-index: 9999;
+        margin: 0;
+        padding: 0;
+        width: 100%;
     }
     .nav-item {
-        text-align: center;
         flex: 1;
-        color: #888;
-        font-size: 12px;
     }
-    .nav-item.active {
-        color: #e74c3c;
+    .nav-item > a {
+        color: #9b9b9b !important;
+        font-weight: 500;
+        font-size: 13px;
     }
-    .nav-item i {
-        font-size: 22px;
-        display: block;
-        margin-bottom: 4px;
+    .nav-item > a:hover {
+        color: #FF4B4B !important;
+    }
+    .nav-item.active > a {
+        color: #FF4B4B !important;
+        font-weight: 600;
+    }
+
+    /* Tambah jarak konten agar tidak ketutupan menu bawah */
+    .block-container {
+        padding-bottom: 5rem;
     }
     </style>
-    """,
-    unsafe_allow_html=True,
-)
+""", unsafe_allow_html=True)
 
-components.html(
-    f"""
-    <div class="bottom-nav">
-        <div class="nav-item {'active' if menu=='home' else ''}" onclick="parent.postMessage({{menu: 'home'}}, '*')">
-            <i class="bi bi-house-fill"></i>Home
-        </div>
-        <div class="nav-item {'active' if menu=='order' else ''}" onclick="parent.postMessage({{menu: 'order'}}, '*')">
-            <i class="bi bi-bag-fill"></i>Order
-        </div>
-        <div class="nav-item {'active' if menu=='report' else ''}" onclick="parent.postMessage({{menu: 'report'}}, '*')">
-            <i class="bi bi-graph-up"></i>Report
-        </div>
-        <div class="nav-item {'active' if menu=='setting' else ''}" onclick="parent.postMessage({{menu: 'setting'}}, '*')">
-            <i class="bi bi-gear-fill"></i>Setting
-        </div>
-    </div>
+# ---------------------- MENU BAWAH ----------------------
+if not st.session_state.logged_in:
+    selected = option_menu(
+        None,
+        ["🏠 Home", "🧾 Order", "✅ Pelanggan", "💸 Pengeluaran", "🔐 Login"],
+        icons=["house", "file-earmark-plus", "person-check", "cash-coin", "lock"],
+        menu_icon="cast",
+        default_index=0,
+        orientation="horizontal"
+    )
+else:
+    selected = option_menu(
+        None,
+        ["🏠 Home", "🧾 Order", "📈 Report", "⚙️ Setting", "🚪 Logout"],
+        icons=["house", "file-earmark-plus", "bar-chart-line", "gear", "door-closed"],
+        menu_icon="cast",
+        default_index=0,
+        orientation="horizontal"
+    )
 
-    <script>
-    window.addEventListener("message", (event) => {{
-        const menu = event.data.menu;
-        if (menu) {{
-            window.parent.streamlitSend({{ type: "set_menu", menu: menu }});
-        }}
-    }});
-    </script>
-    """,
-    height=80,
-)
+# ---------------------- ROUTING HALAMAN ----------------------
+if not st.session_state.logged_in:
+    if selected == "🏠 Home":
+        st.title("📱 Selamat Datang di Servis Center")
+        st.info("Gunakan menu bawah untuk navigasi.")
+    elif selected == "🧾 Order":
+        Order.show()
+    elif selected == "✅ Pelanggan":
+        Pelanggan.show()
+    elif selected == "💸 Pengeluaran":
+        Expense.show()
+    elif selected == "🔐 Login":
+        login_form()
 
-# ---------------------- HANDLE NAVIGATION ----------------------
-def handle_js_event(event):
-    if event["type"] == "set_menu":
-        st.session_state.menu = event["menu"]
-        st.experimental_rerun()
+else:
+    if selected == "🏠 Home":
+        st.title("📊 Dashboard Admin")
+        st.success("Halo Admin 👋")
+    elif selected == "🧾 Order":
+        Order.show()
+    elif selected == "📈 Report":
+        Report.show()
+    elif selected == "⚙️ Setting":
+        Setting.show()
+    elif selected == "🚪 Logout":
+        logout_button()
