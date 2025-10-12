@@ -1,4 +1,4 @@
-# pelanggan.py (v3.3) - Lightweight, Responsive Tabs + Statistik + Kirim WA Otomatis
+# pelanggan.py (v3.4) - Stable: Antrian / Siap Diambil / Selesai / Batal + Kirim WA yang stabil
 import streamlit as st
 import pandas as pd
 import datetime
@@ -32,10 +32,19 @@ def get_worksheet(sheet_name):
 # ------------------- READ SHEET (cached) -------------------
 @st.cache_data(ttl=120)
 def read_sheet_once(sheet_name):
-    """Membaca Google Sheet. Decorated dengan st.cache_data untuk mengurangi panggilan."""
+    """Membaca Google Sheet dengan cache 2 menit."""
     ws = get_worksheet(sheet_name)
     df = pd.DataFrame(ws.get_all_records())
     return df
+
+def clear_sheet_cache_and_reload():
+    """Bersihkan cache fungsi read_sheet_once lalu ambil ulang data."""
+    try:
+        read_sheet_once.clear()
+    except Exception:
+        # jika tidak tersedia, lanjutkan
+        pass
+    return read_sheet_once(SHEET_SERVIS)
 
 def load_df():
     """Load dari session cache atau ambil baru jika belum ada."""
@@ -48,9 +57,9 @@ def load_df():
     return st.session_state.df_cache.copy()
 
 def reload_df():
-    """Force reload dari Google Sheet dan simpan ke session_state."""
+    """Force reload dari Google Sheet dan simpan ke session_state (clear cache dulu)."""
     try:
-        st.session_state.df_cache = read_sheet_once(SHEET_SERVIS)
+        st.session_state.df_cache = clear_sheet_cache_and_reload()
     except Exception as e:
         st.warning(f"Gagal reload sheet: {e}")
         st.session_state.df_cache = pd.DataFrame()
@@ -108,6 +117,7 @@ def get_waktu_jakarta():
     return datetime.datetime.now(tz)
 
 def kirim_wa_pelanggan(nama, no_nota, no_hp, hj_str, jenis_transaksi, nama_toko):
+    """Buka WhatsApp Web / App di tab baru dengan pesan yang sudah di-encode."""
     msg = f"""Assalamualaikum {nama},
 
 Unit anda dengan nomor nota *{no_nota}* sudah selesai dan siap untuk diambil.
@@ -124,9 +134,15 @@ Terima Kasih 🙏
         no_hp_clean = "62" + no_hp_clean
     if no_hp_clean.isdigit() and len(no_hp_clean) >= 10:
         wa_link = f"https://wa.me/{no_hp_clean}?text={urllib.parse.quote(msg)}"
-        js = f"""<script>
-            setTimeout(function(){{ window.open("{wa_link}", "_blank"); }}, 150);
-        </script>"""
+        # tampilkan link manual dan juga eksekusi JS untuk membuka tab
+        st.markdown(f"[📲 Buka WhatsApp]({wa_link})", unsafe_allow_html=True)
+        js = f"""
+        <script>
+            setTimeout(function(){{
+                window.open("{wa_link}", "_blank");
+            }}, 500);
+        </script>
+        """
         st.markdown(js, unsafe_allow_html=True)
     else:
         st.warning("⚠️ Nomor HP pelanggan kosong atau tidak valid.")
@@ -144,10 +160,15 @@ st.markdown(STYLE, unsafe_allow_html=True)
 
 # ------------------- RENDER UTIL FUNCTIONS -------------------
 def prepare_df_for_view(df):
-    # Ensure important columns exist
-    for col in ["Tanggal Masuk","No Nota","Nama Pelanggan","No HP","Barang","Harga Jasa","Harga Modal","Jenis Transaksi","Status Antrian"]:
+    # Ensure important columns exist (compat dengan kolom 'Status' lama & 'Status Antrian')
+    for col in ["Tanggal Masuk","No Nota","Nama Pelanggan","No HP","Barang","Harga Jasa","Harga Modal","Jenis Transaksi","Status Antrian","Status"]:
         if col not in df.columns:
             df[col] = ""
+    # Jika ada kolom Status (lama) dan Status Antrian kosong, salin
+    if "Status" in df.columns and "Status Antrian" in df.columns:
+        df["Status Antrian"] = df["Status Antrian"].fillna("").astype(str)
+        mask_copy = (df["Status Antrian"].str.strip() == "") & (df["Status"].astype(str).str.strip() != "")
+        df.loc[mask_copy, "Status Antrian"] = df.loc[mask_copy, "Status"]
     df["Status Antrian"] = df["Status Antrian"].fillna("").astype(str).str.strip()
     df["Tanggal_parsed"] = pd.to_datetime(df["Tanggal Masuk"], errors="coerce", dayfirst=True)
     return df
@@ -172,6 +193,7 @@ def render_card_entry(row, cfg, active_status):
             st.write(f"🧰 **Barang:** {barang}")
             st.write(f"📝 **Keterangan Status:** {status_antrian or 'Antrian'}")
         with right:
+            # keys unik per nota untuk menghindari duplicate element id
             harga_jasa_input = st.text_input("Harga Jasa (Rp)", value=str(harga_jasa_existing).replace("Rp","").replace(".",""), key=f"hj_{no_nota}")
             harga_modal_input = st.text_input("Harga Modal (Rp)", value=str(harga_modal_existing).replace("Rp","").replace(".",""), key=f"hm_{no_nota}")
             jenis_transaksi = st.radio("Jenis Transaksi:", ["Cash","Transfer"], index=0 if str(jenis_existing).lower()!="transfer" else 1, key=f"jenis_{no_nota}", horizontal=True)
@@ -188,61 +210,63 @@ def render_card_entry(row, cfg, active_status):
         hj_str = format_rp(hj_num) if hj_num else ""
         hm_str = format_rp(hm_num) if hm_num else ""
 
-        # gunakan session_state agar aksi tidak hilang saat rerun
-        action_key = f"action_{no_nota}"
-        if action_key not in st.session_state:
-            st.session_state[action_key] = None
-
+        # ---------- ACTIONS ----------
+        # 1) Dari Antrian -> Siap Diambil: tombol Simpan & Kirim WA
         if (status_antrian == "" or status_antrian.lower() == "antrian") and active_status == "Antrian":
-            if st.button("✅ Siap Diambil (Kirim WA)", key=f"ambil_{no_nota}"):
-                st.session_state[action_key] = "ambil"
-                st.session_state[f"data_{no_nota}"] = (nama, no_nota, no_hp, hj_str, jenis_transaksi)
-                st.rerun()
+            if st.button("✅ Siap Diambil (Simpan & Kirim WA)", key=f"ambil_{no_nota}"):
+                # langsung update sheet ke "Siap Diambil", jangan rerun dulu
+                updates = {
+                    "Harga Jasa": hj_str,
+                    "Harga Modal": hm_str,
+                    "Jenis Transaksi": jenis_transaksi,
+                    "Status Antrian": "Siap Diambil",
+                    # juga update kolom "Status" jika ada supaya kompatibel
+                    "Status": "Siap Diambil"
+                }
+                ok = update_sheet_row_by_nota(SHEET_SERVIS, no_nota, updates)
+                if ok:
+                    # clear cache + reload local cache agar UI segera update
+                    try:
+                        read_sheet_once.clear()
+                    except Exception:
+                        pass
+                    reload_df()
+                    # kirim WA (akan membuka tab baru)
+                    kirim_wa_pelanggan(nama, no_nota, no_hp, hj_str, jenis_transaksi, cfg['nama_toko'])
+                    st.success(f"Nota {no_nota} → Siap Diambil dan WA terbuka.")
+                else:
+                    st.error("Gagal memperbarui sheet. Cek log.")
 
+        # 2) Di Siap Diambil -> tombol Selesai / Batal
         elif status_antrian.lower() == "siap diambil" and active_status == "Siap Diambil":
             c1, c2 = st.columns(2)
             with c1:
                 if st.button("✔️ Selesai", key=f"selesai_{no_nota}"):
-                    st.session_state[action_key] = "selesai"
-                    st.rerun()
+                    ok = update_sheet_row_by_nota(SHEET_SERVIS, no_nota, {"Status Antrian": "Selesai", "Status": "Selesai"})
+                    if ok:
+                        try:
+                            read_sheet_once.clear()
+                        except Exception:
+                            pass
+                        reload_df()
+                        st.success(f"Nota {no_nota} → Selesai")
+                    else:
+                        st.error("Gagal update ke Selesai.")
             with c2:
                 if st.button("❌ Batal", key=f"batal_{no_nota}"):
-                    st.session_state[action_key] = "batal"
-                    st.rerun()
+                    ok = update_sheet_row_by_nota(SHEET_SERVIS, no_nota, {"Status Antrian": "Batal", "Status": "Batal"})
+                    if ok:
+                        try:
+                            read_sheet_once.clear()
+                        except Exception:
+                            pass
+                        reload_df()
+                        st.warning(f"Nota {no_nota} → Batal")
+                    else:
+                        st.error("Gagal update ke Batal.")
 
         else:
             st.info(f"📌 Status Antrian: {status_antrian or 'Antrian'}")
-
-        # eksekusi aksi setelah rerun
-        if st.session_state[action_key] == "ambil":
-            nama, no_nota, no_hp, hj_str, jenis_transaksi = st.session_state.get(f"data_{no_nota}", ("", "", "", "", ""))
-            updates = {
-                "Harga Jasa": hj_str,
-                "Harga Modal": hm_str,
-                "Jenis Transaksi": jenis_transaksi,
-                "Status Antrian": "Siap Diambil"
-            }
-            ok = update_sheet_row_by_nota(SHEET_SERVIS, no_nota, updates)
-            if ok:
-                reload_df()
-                kirim_wa_pelanggan(nama, no_nota, no_hp, hj_str, jenis_transaksi, cfg['nama_toko'])
-                st.success(f"Nota {no_nota} → Siap Diambil dan WA terbuka.")
-            st.session_state[action_key] = None
-
-        elif st.session_state[action_key] == "selesai":
-            ok = update_sheet_row_by_nota(SHEET_SERVIS, no_nota, {"Status Antrian": "Selesai"})
-            if ok:
-                reload_df()
-                st.success(f"Nota {no_nota} → Selesai")
-            st.session_state[action_key] = None
-
-        elif st.session_state[action_key] == "batal":
-            ok = update_sheet_row_by_nota(SHEET_SERVIS, no_nota, {"Status Antrian": "Batal"})
-            if ok:
-                reload_df()
-                st.warning(f"Nota {no_nota} → Batal")
-            st.session_state[action_key] = None
-
 
 # ------------------- APP -------------------
 def show():
@@ -287,7 +311,7 @@ def show():
 
     st.markdown("")  # spacer
 
-    # TABS (Streamlit native -> instant)
+    # TABS
     tab_antrian, tab_siap, tab_selesai, tab_batal = st.tabs([
         "🕒 Antrian",
         "📢 Siap Diambil",
@@ -295,16 +319,16 @@ def show():
         "❌ Batal"
     ])
 
-    # common filter + search (apply to each tab's df_view)
+    # common filter + search
     with st.expander("🔧 Filter & Pencarian", expanded=False):
         today = get_waktu_jakarta().date()
         filter_tipe = st.selectbox("Filter Waktu", ["Semua", "Per Hari", "Per Bulan"], index=0)
         if filter_tipe == "Per Hari":
-            tanggal_pilih = st.date_input("Pilih Tanggal:", today)
+            tanggal_pilih = st.date_input("Pilih Tanggal:", today, key="filter_tanggal")
         elif filter_tipe == "Per Bulan":
-            tahun = st.number_input("Tahun", value=today.year, step=1)
-            bulan = st.number_input("Bulan (1–12)", value=today.month, min_value=1, max_value=12, step=1)
-        q = st.text_input("Cari Nama atau No Nota")
+            tahun = st.number_input("Tahun", value=today.year, step=1, key="filter_tahun")
+            bulan = st.number_input("Bulan (1–12)", value=today.month, min_value=1, max_value=12, step=1, key="filter_bulan")
+        q = st.text_input("Cari Nama atau No Nota", key="filter_q")
 
     # build filters function
     def apply_filters(df_in):
@@ -318,7 +342,7 @@ def show():
             df_out = df_out[df_out["Nama Pelanggan"].astype(str).str.lower().str.contains(q_lower) | df_out["No Nota"].astype(str).str.lower().str.contains(q_lower)]
         return df_out
 
-    # helper to show tab content with limit / pagination
+    # helper to show tab content with pagination
     def show_tab(df_tab, active_status_label):
         df_tab = apply_filters(df_tab)
         st.markdown(f"Menampilkan **{len(df_tab)} data** untuk status **{active_status_label}**.")
@@ -330,6 +354,7 @@ def show():
         per_page = 25
         total = len(df_tab)
         pages = (total - 1) // per_page + 1
+        page_key = f"page_{active_status_label.replace(' ','_')}"
         page = st.number_input(
             f"Halaman ({active_status_label})",
             min_value=1,
@@ -337,7 +362,7 @@ def show():
             value=1,
             step=1,
             format="%d",
-            key=f"page_{active_status_label}"
+            key=page_key
         )
 
         start = (page - 1) * per_page
@@ -369,4 +394,3 @@ def show():
 # run app
 if __name__ == "__main__":
     show()
-
