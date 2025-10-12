@@ -50,7 +50,7 @@ with st.sidebar:
             "Menu Utama",
             [
                 "🧾 Order",
-                "✅ Konfirmasi Pelanggan",
+                "✅ Pelanggan",
                 "💸 Pengeluaran",
                 "🔐 Login Admin"  # tombol login
             ],
@@ -68,7 +68,7 @@ with st.sidebar:
             "Menu Admin",
             [
                 "🧾 Order",
-                "✅ Konfirmasi Pelanggan",
+                "✅ Pelanggan",
                 "💸 Pengeluaran",
                 "📈 Report",
                 "📦 Admin",
