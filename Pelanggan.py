@@ -203,7 +203,7 @@ def render_card_entry(row, cfg, active_status):
                     reload_df()
                     kirim_wa_pelanggan(nama, no_nota, no_hp, hj_str, jenis_transaksi, cfg['nama_toko'])
                     st.success(f"Nota {no_nota} dipindah ke 'Siap Diambil' dan WA terbuka.")
-                    st.experimental_rerun()
+                    st.rerun()
 
         elif status_antrian.lower() == "siap diambil" and active_status == "Siap Diambil":
             c1, c2 = st.columns(2)
@@ -213,14 +213,14 @@ def render_card_entry(row, cfg, active_status):
                     if ok:
                         reload_df()
                         st.success(f"Nota {no_nota} → Selesai")
-                        st.experimental_rerun()
+                        st.rerun()
             with c2:
                 if st.button("❌ Batal", key=f"batal_{no_nota}"):
                     ok = update_sheet_row_by_nota(SHEET_SERVIS, no_nota, {"Status Antrian": "Batal"})
                     if ok:
                         reload_df()
                         st.warning(f"Nota {no_nota} → Batal")
-                        st.experimental_rerun()
+                        st.rerun()
         else:
             st.info(f"📌 Status Antrian: {status_antrian or 'Antrian'}")
 
@@ -239,7 +239,7 @@ def show():
             except Exception:
                 pass
             reload_df()
-            st.experimental_rerun()
+            st.rerun()
     with colr2:
         st.write("")  # spacing
 
