@@ -219,6 +219,4 @@ def show():
 if __name__ == "__main__":
     show()
 
-def show():
-    st.title("🫖 Jualan Teh & Pengeluaran")
-    # isi fitur jualan teh di sini
+
