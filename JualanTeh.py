@@ -13,6 +13,7 @@ import matplotlib.pyplot as plt
 SPREADSHEET_ID = "1OsnO1xQFniBtEFCvGksR2KKrPt-9idE-w6-poM-wXKU"
 SHEET_JUALAN = "Jualan"
 CONFIG_FILE = "config.json"
+OFFLINE_CACHE = "offline_cache.json"  # cache lokal
 DATA_FILE = "service_data.csv"
 
 # =============== AUTH GOOGLE ===============
@@ -42,6 +43,55 @@ def load_config():
         "telepon": "085172174759"
     }
 
+# =============== CEK INTERNET ===============
+def is_online():
+    try:
+        requests.get("https://www.google.com", timeout=3)
+        return True
+    except:
+        return False
+
+# =============== OFFLINE CACHE ===============
+def save_offline(data):
+    if os.path.exists(OFFLINE_CACHE):
+        with open(OFFLINE_CACHE, "r") as f:
+            cache = json.load(f)
+    else:
+        cache = []
+    cache.append(data)
+    with open(OFFLINE_CACHE, "w") as f:
+        json.dump(cache, f, indent=2)
+
+def sync_offline_data():
+    if not os.path.exists(OFFLINE_CACHE):
+        return
+
+    with open(OFFLINE_CACHE, "r") as f:
+        cache = json.load(f)
+
+    if not cache:
+        return
+
+    st.info(f"🔄 Sinkronisasi {len(cache)} data offline...")
+    success = 0
+    failed = 0
+
+    for item in cache:
+        try:
+            append_to_sheet(SHEET_JUALAN, item)
+            success += 1
+        except Exception as e:
+            print("Gagal kirim data offline:", e)
+            failed += 1
+
+    if failed == 0:
+        os.remove(OFFLINE_CACHE)
+        st.success(f"✅ {success} data offline berhasil disinkron!")
+    else:
+        with open(OFFLINE_CACHE, "w") as f:
+            json.dump(cache[failed:], f, indent=2)
+        st.warning(f"⚠️ {failed} data belum berhasil terkirim.")
+
 # =============== REALTIME WIB ===============
 @st.cache_data(ttl=300)
 def get_cached_internet_date():
@@ -62,7 +112,7 @@ def append_to_sheet(sheet_name, data: dict):
     row = [data.get(h, "") for h in headers]
     ws.append_row(row, value_input_option="USER_ENTERED")
 
-@st.cache_data(ttl=120)
+@st.cache_data(ttl=600)
 def read_sheet_cached(sheet_name):
     ws = get_worksheet(sheet_name)
     return pd.DataFrame(ws.get_all_records())
@@ -71,6 +121,12 @@ def read_sheet_cached(sheet_name):
 def show():
     cfg = load_config()
     st.title("🧾 Transaksi Teh")
+
+    # Cek koneksi dan sinkronisasi data offline
+    if is_online():
+        sync_offline_data()
+    else:
+        st.warning("⚠️ Tidak ada koneksi internet — mode offline aktif.")
 
     (tab1,) = st.tabs(["🫖 Jualan Teh & Pengeluaran"])
 
@@ -107,12 +163,17 @@ def show():
                     "Total": total,
                     "Kategori": "Penjualan"
                 }
-                try:
-                    append_to_sheet(SHEET_JUALAN, data)
-                    st.success(f"✅ Penjualan {qty}x {jenis} berhasil disimpan (Total Rp {total:,})")
-                    st.cache_data.clear()
-                except Exception as e:
-                    st.error(f"❌ Gagal simpan: {e}")
+                if is_online():
+                    try:
+                        append_to_sheet(SHEET_JUALAN, data)
+                        st.success(f"✅ Penjualan {qty}x {jenis} berhasil disimpan (Total Rp {total:,})")
+                        st.cache_data.clear()
+                    except Exception as e:
+                        st.error(f"❌ Gagal simpan online: {e}, simpan ke cache.")
+                        save_offline(data)
+                else:
+                    save_offline(data)
+                    st.info("📦 Data disimpan offline, akan terkirim otomatis saat online.")
 
         # ================== PENGELUARAN ==================
         with col2:
@@ -136,12 +197,17 @@ def show():
                         "Total": nominal,
                         "Kategori": "Pengeluaran"
                     }
-                    try:
-                        append_to_sheet(SHEET_JUALAN, data)
-                        st.success(f"✅ Pengeluaran {pilihan_pengeluaran} Rp {nominal:,.0f} tersimpan")
-                        st.cache_data.clear()
-                    except Exception as e:
-                        st.error(f"❌ Gagal simpan: {e}")
+                    if is_online():
+                        try:
+                            append_to_sheet(SHEET_JUALAN, data)
+                            st.success(f"✅ Pengeluaran {pilihan_pengeluaran} Rp {nominal:,.0f} tersimpan")
+                            st.cache_data.clear()
+                        except Exception as e:
+                            st.error(f"❌ Gagal simpan online: {e}, simpan ke cache.")
+                            save_offline(data)
+                    else:
+                        save_offline(data)
+                        st.info("📦 Data pengeluaran disimpan offline, akan terkirim saat online.")
 
         st.markdown("---")
 
@@ -151,18 +217,16 @@ def show():
         try:
             jualan_df = read_sheet_cached(SHEET_JUALAN)
         except Exception as e:
-            st.error(f"❌ Gagal baca data: {e}")
+            st.error(f"❌ Gagal baca data online: {e}")
             return
 
         if jualan_df.empty:
             st.info("📭 Belum ada data jualan atau pengeluaran.")
             return
 
-        # Konversi tanggal
         jualan_df["Tanggal"] = pd.to_datetime(jualan_df["Tanggal"], format="%d/%m/%Y", errors="coerce")
         jualan_df["Total"] = pd.to_numeric(jualan_df["Total"], errors="coerce").fillna(0)
 
-        # Buat daftar tanggal unik untuk filter
         min_date = jualan_df["Tanggal"].min().date()
         max_date = jualan_df["Tanggal"].max().date()
         start_date, end_date = st.date_input(
@@ -172,11 +236,9 @@ def show():
             max_value=max_date
         )
 
-        # Filter data sesuai tanggal
         mask = (jualan_df["Tanggal"].dt.date >= start_date) & (jualan_df["Tanggal"].dt.date <= end_date)
         filtered_df = jualan_df[mask]
 
-        # Hitung total
         total_jual = filtered_df[filtered_df["Kategori"] == "Penjualan"]["Total"].sum()
         total_keluar = filtered_df[filtered_df["Kategori"] == "Pengeluaran"]["Total"].sum()
         laba_bersih = total_jual - total_keluar
@@ -186,8 +248,6 @@ def show():
         col_b.metric("Total Pengeluaran", f"Rp {total_keluar:,.0f}")
         col_c.metric("Laba Bersih", f"Rp {laba_bersih:,.0f}")
 
-        # ================== GRAFIK ==================
-        # Grouping per tanggal
         daily_summary = (
             filtered_df.groupby(["Tanggal", "Kategori"])["Total"]
             .sum()
@@ -204,11 +264,8 @@ def show():
         plt.tight_layout()
         st.pyplot(plt)
 
-        # ================== TABEL DETAIL ==================
         st.markdown("### 📄 Data Transaksi")
         st.dataframe(filtered_df.sort_values(by="Tanggal", ascending=False), use_container_width=True)
 
 if __name__ == "__main__":
     show()
-
-
