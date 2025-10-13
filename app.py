@@ -1,7 +1,7 @@
-# ========================== app.py (v2.0) - Dengan Login Admin ==========================
+# ========================== app.py (v2.1) - Dengan Login Admin + Menu Jualan Teh ==========================
 import streamlit as st
 from streamlit_option_menu import option_menu
-import Order, Report, Setting, Admin, Expense, Pelanggan
+import Order, Report, Setting, Admin, Expense, Pelanggan, JualanTeh
 
 # ---------------------- KONFIGURASI HALAMAN ----------------------
 st.set_page_config(
@@ -44,19 +44,21 @@ with st.sidebar:
     st.image("https://cdn-icons-png.flaticon.com/512/1048/1048953.png", width=80)
     st.markdown("## 📱 Capslock Komputer")
 
-    # Jika belum login → tampilkan menu user biasa saja
+    # Jika belum login → menu biasa
     if not st.session_state.logged_in:
         selected = option_menu(
             "Menu Utama",
             [
                 "🧾 Order",
                 "✅ Pelanggan",
+                "🫖 Jualan Teh",
                 "💸 Pengeluaran",
                 "🔐 Login Admin"  # tombol login
             ],
             icons=[
                 "file-earmark-plus",
                 "person-check",
+                "cup-hot",
                 "cash-coin",
                 "lock"
             ],
@@ -64,11 +66,13 @@ with st.sidebar:
             default_index=0
         )
     else:
+        # Jika sudah login → menu admin
         selected = option_menu(
             "Menu Admin",
             [
                 "🧾 Order",
                 "✅ Pelanggan",
+                "🫖 Jualan Teh",
                 "💸 Pengeluaran",
                 "📈 Report",
                 "📦 Admin",
@@ -78,6 +82,7 @@ with st.sidebar:
             icons=[
                 "file-earmark-plus",
                 "person-check",
+                "cup-hot",
                 "cash-coin",
                 "bar-chart-line",
                 "box-seam",
@@ -94,6 +99,8 @@ if not st.session_state.logged_in:
         Order.show()
     elif selected == "✅ Pelanggan":
         Pelanggan.show()
+    elif selected == "🫖 Jualan Teh":
+        JualanTeh.show()
     elif selected == "💸 Pengeluaran":
         Expense.show()
     elif selected == "🔐 Login Admin":
@@ -104,6 +111,8 @@ else:
         Order.show()
     elif selected == "✅ Pelanggan":
         Pelanggan.show()
+    elif selected == "🫖 Jualan Teh":
+        JualanTeh.show()
     elif selected == "💸 Pengeluaran":
         Expense.show()
     elif selected == "📈 Report":
