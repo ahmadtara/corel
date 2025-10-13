@@ -21,3 +21,4 @@ pyproj
 python-escpos
 pyserial
 Pillow
+matplotlib
