@@ -11,9 +11,6 @@ import matplotlib.pyplot as plt
 
 # ================= CONFIG ==================
 SPREADSHEET_ID = "1OsnO1xQFniBtEFCvGksR2KKrPt-9idE-w6-poM-wXKU"
-SHEET_SERVIS = "Servis"
-SHEET_TRANSAKSI = "Transaksi"
-SHEET_STOK = "Stok"
 SHEET_JUALAN = "Jualan"
 CONFIG_FILE = "config.json"
 DATA_FILE = "service_data.csv"
