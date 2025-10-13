@@ -70,19 +70,11 @@ def read_sheet_cached(sheet_name):
 # =============== PAGE APP ===============
 def show():
     cfg = load_config()
-    st.title("🧾 Transaksi Servis & Barang")
+    st.title("🧾 Transaksi Teh")
 
-    tab1, tab2, tab3 = st.tabs(["🛠️ Servis Baru", "🧰 Transaksi Barang", "🫖 Jualan Teh & Pengeluaran"])
+    tab1 = st.tabs(["🫖 Jualan Teh & Pengeluaran"])
 
-    # --------------------------------------
-    # TAB 1 & 2 = Kode kamu sebelumnya
-    # (saya tidak ulangi biar fokus ke fitur Jualan)
-    # --------------------------------------
-
-    # --------------------------------------
-    # TAB 3 : JUALAN TEH
-    # --------------------------------------
-    with tab3:
+    with tab1:
         st.subheader("🫖 Penjualan Minuman Teh & Pengeluaran")
 
         col1, col2 = st.columns(2)
