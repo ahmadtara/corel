@@ -72,7 +72,7 @@ def show():
     cfg = load_config()
     st.title("🧾 Transaksi Teh")
 
-    tab1 = st.tabs(["🫖 Jualan Teh & Pengeluaran"])
+    (tab1,) = st.tabs(["🫖 Jualan Teh & Pengeluaran"])
 
     with tab1:
         st.subheader("🫖 Penjualan Minuman Teh & Pengeluaran")
