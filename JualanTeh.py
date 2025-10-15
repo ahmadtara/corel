@@ -1,3 +1,4 @@
+# ==================== TEH APP (v2.2 — Tanpa Grafik + Filter Harian & Bulanan) ====================
 import streamlit as st
 import pandas as pd
 import datetime
@@ -7,14 +8,12 @@ from oauth2client.service_account import ServiceAccountCredentials
 import json
 import requests
 import urllib.parse
-import matplotlib.pyplot as plt
 
 # ================= CONFIG ==================
 SPREADSHEET_ID = "1OsnO1xQFniBtEFCvGksR2KKrPt-9idE-w6-poM-wXKU"
 SHEET_JUALAN = "Jualan"
 CONFIG_FILE = "config.json"
 OFFLINE_CACHE = "offline_cache.json"  # cache lokal
-DATA_FILE = "service_data.csv"
 
 # =============== AUTH GOOGLE ===============
 def authenticate_google():
@@ -211,7 +210,7 @@ def show():
 
         st.markdown("---")
 
-        # ================== REKAP & GRAFIK ==================
+        # ================== REKAP ==================
         st.subheader("📊 Rekap Penjualan & Pengeluaran")
 
         try:
@@ -227,44 +226,33 @@ def show():
         jualan_df["Tanggal"] = pd.to_datetime(jualan_df["Tanggal"], format="%d/%m/%Y", errors="coerce")
         jualan_df["Total"] = pd.to_numeric(jualan_df["Total"], errors="coerce").fillna(0)
 
-        min_date = jualan_df["Tanggal"].min().date()
-        max_date = jualan_df["Tanggal"].max().date()
-        start_date, end_date = st.date_input(
-            "🗓️ Filter Tanggal",
-            value=[min_date, max_date],
-            min_value=min_date,
-            max_value=max_date
-        )
+        # Default tampil hari ini
+        today = get_cached_internet_date()
+        filtered_df = jualan_df[jualan_df["Tanggal"].dt.date == today]
 
-        mask = (jualan_df["Tanggal"].dt.date >= start_date) & (jualan_df["Tanggal"].dt.date <= end_date)
-        filtered_df = jualan_df[mask]
+        st.info(f"📅 Menampilkan transaksi tanggal **{today.strftime('%d/%m/%Y')}** (otomatis)")
 
-        total_jual = filtered_df[filtered_df["Kategori"] == "Penjualan"]["Total"].sum()
-        total_keluar = filtered_df[filtered_df["Kategori"] == "Pengeluaran"]["Total"].sum()
-        laba_bersih = total_jual - total_keluar
+        # Filter tambahan per bulan
+        st.markdown("### 🔍 Filter Per Bulan")
+        months = jualan_df["Tanggal"].dt.strftime("%Y-%m").unique()
+        selected_month = st.selectbox("Pilih Bulan", sorted(months, reverse=True))
 
-        col_a, col_b, col_c = st.columns(3)
-        col_a.metric("Total Penjualan", f"Rp {total_jual:,.0f}")
-        col_b.metric("Total Pengeluaran", f"Rp {total_keluar:,.0f}")
-        col_c.metric("Laba Bersih", f"Rp {laba_bersih:,.0f}")
+        if selected_month:
+            month_df = jualan_df[jualan_df["Tanggal"].dt.strftime("%Y-%m") == selected_month]
+            total_jual = month_df[month_df["Kategori"] == "Penjualan"]["Total"].sum()
+            total_keluar = month_df[month_df["Kategori"] == "Pengeluaran"]["Total"].sum()
+            laba_bersih = total_jual - total_keluar
 
-        daily_summary = (
-            filtered_df.groupby(["Tanggal", "Kategori"])["Total"]
-            .sum()
-            .unstack(fill_value=0)
-            .reset_index()
-        )
+            col_a, col_b, col_c = st.columns(3)
+            col_a.metric("Total Penjualan", f"Rp {total_jual:,.0f}")
+            col_b.metric("Total Pengeluaran", f"Rp {total_keluar:,.0f}")
+            col_c.metric("Laba Bersih", f"Rp {laba_bersih:,.0f}")
 
-        plt.figure(figsize=(8, 4))
-        plt.bar(daily_summary["Tanggal"].dt.strftime("%d/%m"), daily_summary.get("Penjualan", 0), label="Penjualan")
-        plt.bar(daily_summary["Tanggal"].dt.strftime("%d/%m"), -daily_summary.get("Pengeluaran", 0), label="Pengeluaran")
-        plt.xticks(rotation=45)
-        plt.title("📊 Grafik Penjualan vs Pengeluaran")
-        plt.legend()
-        plt.tight_layout()
-        st.pyplot(plt)
+            st.markdown(f"### 📄 Data Transaksi Bulan {selected_month}")
+            st.dataframe(month_df.sort_values(by="Tanggal", ascending=False), use_container_width=True)
 
-        st.markdown("### 📄 Data Transaksi")
+        st.markdown("---")
+        st.markdown("### 📄 Data Transaksi Hari Ini")
         st.dataframe(filtered_df.sort_values(by="Tanggal", ascending=False), use_container_width=True)
 
 if __name__ == "__main__":
