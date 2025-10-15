@@ -397,7 +397,7 @@ def show():
             else:
                 st.error(f"⚠️ Gagal kirim notifikasi Telegram: {msg}")
 
-            # === Buat HTML nota untuk preview/print ===
+            # === Buat HTML nota untuk print langsung di browser ===
             html_nota = f"""
             <html>
             <head>
@@ -415,9 +415,15 @@ def show():
             hr {{ border: 1px dashed #000; margin: 8px 0; }}
             p, div {{ margin: 2px 0; white-space: pre-wrap; }}
             .center {{ text-align: center; }}
+            @media print {{
+              body {{
+                -webkit-print-color-adjust: exact;
+                print-color-adjust: exact;
+              }}
+            }}
             </style>
             </head>
-            <body onload="window.print()">
+            <body onload="window.print();window.onafterprint=()=>window.location.reload();">
             <h2>{cfg['nama_toko']}</h2>
             <div>{cfg['alamat']}<br/>HP: {cfg['telepon']}</div>
             <hr/>
@@ -438,20 +444,9 @@ def show():
             </body>
             </html>
             """
-
-            # === Buka print preview di tab baru secara otomatis ===
-            try:
-                open_print_preview_in_new_tab(html_nota)
-                st.info("🖨️ Print preview terbuka di tab baru (cek pop-up/blocker jika tidak muncul).")
-            except Exception as e:
-                st.error(f"⚠️ Gagal membuka print preview otomatis: {e}")
-                # fallback: berikan link download / data-url agar user klik manual
-                data_url = "data:text/html;charset=utf-8," + urllib.parse.quote(html_nota)
-                st.markdown(f"[🖨️ Buka Print Preview Nota di Tab Baru]({data_url})", unsafe_allow_html=True)
-
-            # === TOMBOL DOWNLOAD HTML (opsional) ===
-            st.download_button("📥 Download Nota (HTML)", data=html_nota,
-                               file_name=f"Nota_{nota}.html", mime="text/html")
+            
+            # === Langsung tampilkan print di browser aktif ===
+            components.html(html_nota, height=600, width=350, scrolling=False)
 
             # WhatsApp link
             msg = f"""*NOTA ELEKTRONIK*
