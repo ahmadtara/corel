@@ -16,6 +16,27 @@ SHEET_STOK = "Stok"
 CONFIG_FILE = "config.json"
 DATA_FILE = "service_data.csv"  # cache lokal
 
+# =============== TELEGRAM NOTIF ===============
+TELEGRAM_TOKEN = "7656007924:AAGi1it2M7jE0Sen28myiPhEmYPd1-jsI_Q"
+TELEGRAM_CHAT_ID = "6122753506"
+
+def send_telegram_notification(service_data):
+    try:
+        msg = f"""🔔 *Servis Baru Masuk!*
+
+📦 *Barang:* {service_data.get('Barang')}
+⚙️ *Kerusakan:* {service_data.get('Kerusakan')}
+📋 *Kelengkapan:* {service_data.get('Kelengkapan')}"""
+        url = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendMessage"
+        payload = {
+            "chat_id": TELEGRAM_CHAT_ID,
+            "text": msg,
+            "parse_mode": "Markdown"
+        }
+        requests.post(url, json=payload, timeout=5)
+    except Exception as e:
+        print("Gagal kirim Telegram:", e)
+
 # =============== AUTH GOOGLE ===============
 def authenticate_google():
     creds_dict = st.secrets["gcp_service_account"]
@@ -31,6 +52,29 @@ def get_worksheet(sheet_name):
     client = authenticate_google()
     sh = client.open_by_key(SPREADSHEET_ID)
     return sh.worksheet(sheet_name)
+
+def ensure_headers(sheet_name, required_headers):
+    """
+    Pastikan baris header (row 1) di worksheet mengandung required_headers.
+    Jika belum ada, tambahkan di akhir baris header yang ada.
+    """
+    try:
+        ws = get_worksheet(sheet_name)
+        current = ws.row_values(1)
+        if not current:
+            # set row1 to required_headers
+            ws.insert_row(required_headers, index=1)
+            return
+        changed = False
+        for h in required_headers:
+            if h not in current:
+                current.append(h)
+                changed = True
+        if changed:
+            # update row 1
+            ws.update("1:1", [current])
+    except Exception as e:
+        print("ensure_headers gagal:", e)
 
 # =============== CONFIG FILE ===============
 def load_config():
@@ -61,9 +105,11 @@ def get_cached_internet_date():
 def load_local_data():
     if os.path.exists(DATA_FILE):
         return pd.read_csv(DATA_FILE)
+    # default columns include Status Antrian
     return pd.DataFrame(columns=[
         "No Nota", "Tanggal Masuk", "Estimasi Selesai", "Nama Pelanggan", "No HP",
-        "Barang", "Kerusakan", "Kelengkapan", "Status", "Harga Jasa", "Harga Modal",
+        "Barang", "Kerusakan", "Kelengkapan", "Status", "Status Antrian",
+        "Harga Jasa", "Harga Modal",
         "Jenis Transaksi", "uploaded"
     ])
 
@@ -94,10 +140,21 @@ def get_next_nota_from_sheet(sheet_name, prefix):
 
 # =============== SPREADSHEET OPS ===============
 def append_to_sheet(sheet_name, data: dict):
-    ws = get_worksheet(sheet_name)
-    headers = ws.row_values(1)
-    row = [data.get(h, "") for h in headers]
-    ws.append_row(row, value_input_option="USER_ENTERED")
+    """
+    Append row to sheet but ensure header contains keys of data first.
+    """
+    try:
+        # ensure headers exist
+        required = list(data.keys())
+        ensure_headers(sheet_name, required)
+        ws = get_worksheet(sheet_name)
+        headers = ws.row_values(1)
+        # Build row in header order
+        row = [data.get(h, "") for h in headers]
+        ws.append_row(row, value_input_option="USER_ENTERED")
+    except Exception as e:
+        # bubble up
+        raise
 
 @st.cache_data(ttl=120)
 def read_sheet_cached(sheet_name):
@@ -110,6 +167,8 @@ def sync_local_cache():
     df = load_local_data()
     if df.empty:
         return
+    if "uploaded" not in df.columns:
+        df["uploaded"] = False
     not_uploaded = df[df["uploaded"] == False]
     if not not_uploaded.empty:
         st.info(f"🔁 Mengupload ulang {len(not_uploaded)} data tersimpan lokal...")
@@ -169,7 +228,6 @@ def print_escpos_text_lines(lines, cut=True, printer_cfg=None):
 
         # print lines
         for ln in lines:
-            # ensure newline
             p.text(str(ln) + "\n")
         if cut:
             try:
@@ -180,7 +238,6 @@ def print_escpos_text_lines(lines, cut=True, printer_cfg=None):
     finally:
         try:
             if p:
-                # Some escpos backends need close - best effort
                 if hasattr(p, 'close'):
                     p.close()
         except Exception:
@@ -280,6 +337,7 @@ def show():
                 "Kerusakan": kerusakan,
                 "Kelengkapan": kelengkapan,
                 "Status": "Cek Dulu",
+                "Status Antrian": "Antrian",  # <-- otomatis diisi "Antrian"
                 "Harga Jasa": harga_jasa,
                 "Harga Modal": harga_modal,
                 "Jenis Transaksi": jenis_transaksi,
@@ -289,6 +347,7 @@ def show():
             df = load_local_data()
             df = pd.concat([df, pd.DataFrame([service_data])], ignore_index=True)
 
+            # pastikan header "Status Antrian" ada di sheet sebelum append
             try:
                 append_to_sheet(SHEET_SERVIS, service_data)
                 df.loc[df["No Nota"] == nota, "uploaded"] = True
@@ -297,6 +356,62 @@ def show():
                 st.warning(f"⚠️ Gagal upload ke Sheet: {e}. Disimpan lokal dulu.")
             save_local_data(df)
 
+            # === Kirim Notif Telegram ===
+            try:
+                send_telegram_notification(service_data)
+                st.info("🔔 Notifikasi Telegram terkirim.")
+            except Exception as e:
+                st.warning(f"⚠️ Gagal kirim notifikasi Telegram: {e}")
+
+            # === Buat link Print Preview: buka tab baru berisi HTML dan auto-trigger print() ===
+            html_nota = f"""
+            <html>
+            <head>
+            <meta charset="utf-8" />
+            <title>Nota Servis {nota}</title>
+            <style>
+            body {{
+              font-family: monospace;
+              width: 320px;
+              margin: 10px auto;
+              text-align: left;
+              color: #000;
+            }}
+            h2 {{ text-align: center; margin-bottom: 4px; }}
+            hr {{ border: 1px dashed #000; margin: 8px 0; }}
+            p, div {{ margin: 2px 0; white-space: pre-wrap; }}
+            .center {{ text-align: center; }}
+            </style>
+            </head>
+            <body onload="window.print()">
+            <h2>{cfg['nama_toko']}</h2>
+            <div>{cfg['alamat']}<br/>HP: {cfg['telepon']}</div>
+            <hr/>
+            <div><b>No Nota:</b> {nota}</div>
+            <div><b>Pelanggan:</b> {nama}</div>
+            <div><b>Tanggal Masuk:</b> {tanggal_masuk_str}</div>
+            <div><b>Estimasi Selesai:</b> {estimasi_selesai}</div>
+            <hr/>
+            <div><b>Barang:</b> {barang}</div>
+            <div><b>Kerusakan:</b><br/>{kerusakan}</div>
+            <div><b>Kelengkapan:</b><br/>{kelengkapan}</div>
+            <hr/>
+            <div><b>Harga:</b> (Cek Dulu)</div>
+            <div><b>Status:</b> Cek Dulu</div>
+            <hr/>
+            <div class="center">Terima Kasih 🙏</div>
+            <div class="center">{datetime.datetime.now().strftime('%d/%m/%Y %H:%M')}</div>
+            </body>
+            </html>
+            """
+            data_url = "data:text/html;charset=utf-8," + urllib.parse.quote(html_nota)
+            st.markdown(f"[🖨️ Buka Print Preview Nota di Tab Baru]({data_url})", unsafe_allow_html=True)
+
+            # === TOMBOL DOWNLOAD HTML (opsional) ===
+            st.download_button("📥 Download Nota (HTML)", data=html_nota,
+                               file_name=f"Nota_{nota}.html", mime="text/html")
+
+            # WhatsApp link
             msg = f"""*NOTA ELEKTRONIK*
 
 ```{cfg['nama_toko']}```
@@ -328,7 +443,7 @@ Terima Kasih 🙏
             wa_link = f"https://wa.me/{hp}?text={requests.utils.quote(msg)}"
             st.markdown(f"[📲 KIRIM NOTA SERVIS VIA WHATSAPP]({wa_link})", unsafe_allow_html=True)
 
-            # === ESC/POS PRINT SERVIS (langsung, tanpa preview) ===
+            # === ESC/POS PRINT SERVIS (langsung, jika tersedia) ===
             now_dt = datetime.datetime.now()
             printer_cfg = None
             # read escpos config from st.secrets if available
@@ -344,7 +459,6 @@ Terima Kasih 🙏
                     st.info("🖨️ Nota SERVIS dikirim ke printer (ESC/POS).")
                 except Exception as e:
                     st.warning(f"⚠️ Gagal cetak ke ESC/POS: {e}")
-                    # fallback: tidak memunculkan preview, hanya beri tahu
             else:
                 st.warning("📌 Module 'python-escpos' belum terpasang di server. Install dengan: pip install python-escpos")
 
@@ -362,7 +476,7 @@ Terima Kasih 🙏
 
         try:
             stok_df = read_sheet_cached(SHEET_STOK)
-        except:
+        except Exception:
             stok_df = pd.DataFrame(columns=["nama_barang", "modal", "harga_jual", "qty"])
 
         pilihan_input = st.radio("Pilih Cara Input Transaksi:", ["📦 Pilih dari Stok", "✍️ Input Manual"], horizontal=True)
