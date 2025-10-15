@@ -1,4 +1,4 @@
-# ==================== TEH APP (v2.2 — Tanpa Grafik + Filter Harian & Bulanan) ====================
+# ==================== TEH APP (v2.4 — Default Hari Ini + Tombol Reload) ====================
 import streamlit as st
 import pandas as pd
 import datetime
@@ -7,13 +7,11 @@ import gspread
 from oauth2client.service_account import ServiceAccountCredentials
 import json
 import requests
-import urllib.parse
 
 # ================= CONFIG ==================
 SPREADSHEET_ID = "1OsnO1xQFniBtEFCvGksR2KKrPt-9idE-w6-poM-wXKU"
 SHEET_JUALAN = "Jualan"
 CONFIG_FILE = "config.json"
-OFFLINE_CACHE = "offline_cache.json"  # cache lokal
 
 # =============== AUTH GOOGLE ===============
 def authenticate_google():
@@ -50,47 +48,6 @@ def is_online():
     except:
         return False
 
-# =============== OFFLINE CACHE ===============
-def save_offline(data):
-    if os.path.exists(OFFLINE_CACHE):
-        with open(OFFLINE_CACHE, "r") as f:
-            cache = json.load(f)
-    else:
-        cache = []
-    cache.append(data)
-    with open(OFFLINE_CACHE, "w") as f:
-        json.dump(cache, f, indent=2)
-
-def sync_offline_data():
-    if not os.path.exists(OFFLINE_CACHE):
-        return
-
-    with open(OFFLINE_CACHE, "r") as f:
-        cache = json.load(f)
-
-    if not cache:
-        return
-
-    st.info(f"🔄 Sinkronisasi {len(cache)} data offline...")
-    success = 0
-    failed = 0
-
-    for item in cache:
-        try:
-            append_to_sheet(SHEET_JUALAN, item)
-            success += 1
-        except Exception as e:
-            print("Gagal kirim data offline:", e)
-            failed += 1
-
-    if failed == 0:
-        os.remove(OFFLINE_CACHE)
-        st.success(f"✅ {success} data offline berhasil disinkron!")
-    else:
-        with open(OFFLINE_CACHE, "w") as f:
-            json.dump(cache[failed:], f, indent=2)
-        st.warning(f"⚠️ {failed} data belum berhasil terkirim.")
-
 # =============== REALTIME WIB ===============
 @st.cache_data(ttl=300)
 def get_cached_internet_date():
@@ -100,8 +57,8 @@ def get_cached_internet_date():
             data = res.json()
             dt = datetime.datetime.fromisoformat(data["datetime"].replace("Z", "+00:00"))
             return dt.date()
-    except Exception as e:
-        print("⚠️ Gagal ambil waktu internet:", e)
+    except:
+        pass
     return datetime.date.today()
 
 # =============== SPREADSHEET OPS ===============
@@ -114,29 +71,33 @@ def append_to_sheet(sheet_name, data: dict):
 @st.cache_data(ttl=600)
 def read_sheet_cached(sheet_name):
     ws = get_worksheet(sheet_name)
-    return pd.DataFrame(ws.get_all_records())
+    df = pd.DataFrame(ws.get_all_records())
+    return df
 
 # =============== PAGE APP ===============
 def show():
     cfg = load_config()
-    st.title("🧾 Transaksi Teh")
+    st.title("🧾 Transaksi Teh Harian")
 
-    # Cek koneksi dan sinkronisasi data offline
-    if is_online():
-        sync_offline_data()
-    else:
-        st.warning("⚠️ Tidak ada koneksi internet — mode offline aktif.")
+    if not is_online():
+        st.error("⚠️ Tidak ada koneksi internet. Pastikan koneksi aktif untuk menulis ke Google Sheet.")
+        return
 
-    (tab1,) = st.tabs(["🫖 Jualan Teh & Pengeluaran"])
+    # Tombol reload data sheet
+    if st.button("🔁 Reload Data Sheet"):
+        st.cache_data.clear()
+        st.success("✅ Data sheet berhasil dimuat ulang!")
+
+    (tab1,) = st.tabs(["🫖 Penjualan & Pengeluaran"])
 
     with tab1:
-        st.subheader("🫖 Penjualan Minuman Teh & Pengeluaran")
+        st.subheader("🫖 Input Transaksi Teh")
 
         col1, col2 = st.columns(2)
 
         # ================== PENJUALAN ==================
         with col1:
-            st.markdown("### 🧋 Input Penjualan")
+            st.markdown("### 🧋 Penjualan Teh")
             pilihan_teh = st.radio(
                 "Pilih Jenis Teh:",
                 ["Teh Hijau (Rp 5.000)", "Teh Ori (Rp 4.000)"],
@@ -146,14 +107,9 @@ def show():
             tanggal_jual = get_cached_internet_date()
 
             if st.button("💾 Simpan Penjualan"):
-                if "Hijau" in pilihan_teh:
-                    jenis = "Teh Hijau"
-                    harga = 5000
-                else:
-                    jenis = "Teh Ori"
-                    harga = 4000
+                jenis = "Teh Hijau" if "Hijau" in pilihan_teh else "Teh Ori"
+                harga = 5000 if jenis == "Teh Hijau" else 4000
                 total = harga * qty
-
                 data = {
                     "Tanggal": tanggal_jual.strftime("%d/%m/%Y"),
                     "Jenis": jenis,
@@ -162,21 +118,16 @@ def show():
                     "Total": total,
                     "Kategori": "Penjualan"
                 }
-                if is_online():
-                    try:
-                        append_to_sheet(SHEET_JUALAN, data)
-                        st.success(f"✅ Penjualan {qty}x {jenis} berhasil disimpan (Total Rp {total:,})")
-                        st.cache_data.clear()
-                    except Exception as e:
-                        st.error(f"❌ Gagal simpan online: {e}, simpan ke cache.")
-                        save_offline(data)
-                else:
-                    save_offline(data)
-                    st.info("📦 Data disimpan offline, akan terkirim otomatis saat online.")
+                try:
+                    append_to_sheet(SHEET_JUALAN, data)
+                    st.success(f"✅ {qty}x {jenis} disimpan! (Rp {total:,.0f})")
+                    st.cache_data.clear()
+                except Exception as e:
+                    st.error(f"❌ Gagal simpan: {e}")
 
         # ================== PENGELUARAN ==================
         with col2:
-            st.markdown("### 📉 Input Pengeluaran")
+            st.markdown("### 📉 Pengeluaran")
             pilihan_pengeluaran = st.selectbox(
                 "Pilih Pengeluaran",
                 ["Beli Cup/Es Batu", "Beli Plastik", "Beli Bubuk Teh Ori", "Beli Bubuk Teh Hijau", "Beli Galon"]
@@ -186,7 +137,7 @@ def show():
 
             if st.button("💰 Simpan Pengeluaran"):
                 if nominal <= 0:
-                    st.warning("Nominal tidak boleh 0")
+                    st.warning("Nominal tidak boleh 0.")
                 else:
                     data = {
                         "Tanggal": tanggal_pengeluaran.strftime("%d/%m/%Y"),
@@ -196,64 +147,73 @@ def show():
                         "Total": nominal,
                         "Kategori": "Pengeluaran"
                     }
-                    if is_online():
-                        try:
-                            append_to_sheet(SHEET_JUALAN, data)
-                            st.success(f"✅ Pengeluaran {pilihan_pengeluaran} Rp {nominal:,.0f} tersimpan")
-                            st.cache_data.clear()
-                        except Exception as e:
-                            st.error(f"❌ Gagal simpan online: {e}, simpan ke cache.")
-                            save_offline(data)
-                    else:
-                        save_offline(data)
-                        st.info("📦 Data pengeluaran disimpan offline, akan terkirim saat online.")
+                    try:
+                        append_to_sheet(SHEET_JUALAN, data)
+                        st.success(f"✅ Pengeluaran '{pilihan_pengeluaran}' Rp {nominal:,.0f} disimpan!")
+                        st.cache_data.clear()
+                    except Exception as e:
+                        st.error(f"❌ Gagal simpan: {e}")
 
+        # ================== DATA TRANSAKSI ==================
         st.markdown("---")
-
-        # ================== REKAP ==================
-        st.subheader("📊 Rekap Penjualan & Pengeluaran")
+        st.subheader("📊 Rekap Transaksi Hari Ini")
 
         try:
-            jualan_df = read_sheet_cached(SHEET_JUALAN)
+            df = read_sheet_cached(SHEET_JUALAN)
         except Exception as e:
-            st.error(f"❌ Gagal baca data online: {e}")
+            st.error(f"❌ Gagal baca data: {e}")
             return
 
-        if jualan_df.empty:
-            st.info("📭 Belum ada data jualan atau pengeluaran.")
+        if df.empty:
+            st.info("📭 Belum ada data transaksi.")
             return
 
-        jualan_df["Tanggal"] = pd.to_datetime(jualan_df["Tanggal"], format="%d/%m/%Y", errors="coerce")
-        jualan_df["Total"] = pd.to_numeric(jualan_df["Total"], errors="coerce").fillna(0)
+        df["Tanggal"] = pd.to_datetime(df["Tanggal"], format="%d/%m/%Y", errors="coerce")
+        df["Total"] = pd.to_numeric(df["Total"], errors="coerce").fillna(0)
 
-        # Default tampil hari ini
         today = get_cached_internet_date()
-        filtered_df = jualan_df[jualan_df["Tanggal"].dt.date == today]
+        hari_ini_df = df[df["Tanggal"].dt.date == today]
 
-        st.info(f"📅 Menampilkan transaksi tanggal **{today.strftime('%d/%m/%Y')}** (otomatis)")
+        st.info(f"📅 Menampilkan transaksi hari ini (**{today.strftime('%d/%m/%Y')}**)")
 
-        # Filter tambahan per bulan
-        st.markdown("### 🔍 Filter Per Bulan")
-        months = jualan_df["Tanggal"].dt.strftime("%Y-%m").unique()
-        selected_month = st.selectbox("Pilih Bulan", sorted(months, reverse=True))
+        total_jual = hari_ini_df[hari_ini_df["Kategori"] == "Penjualan"]["Total"].sum()
+        total_keluar = hari_ini_df[hari_ini_df["Kategori"] == "Pengeluaran"]["Total"].sum()
+        laba_bersih = total_jual - total_keluar
 
-        if selected_month:
-            month_df = jualan_df[jualan_df["Tanggal"].dt.strftime("%Y-%m") == selected_month]
-            total_jual = month_df[month_df["Kategori"] == "Penjualan"]["Total"].sum()
-            total_keluar = month_df[month_df["Kategori"] == "Pengeluaran"]["Total"].sum()
-            laba_bersih = total_jual - total_keluar
+        col_a, col_b, col_c = st.columns(3)
+        col_a.metric("Penjualan Hari Ini", f"Rp {total_jual:,.0f}")
+        col_b.metric("Pengeluaran Hari Ini", f"Rp {total_keluar:,.0f}")
+        col_c.metric("Laba Bersih", f"Rp {laba_bersih:,.0f}")
 
-            col_a, col_b, col_c = st.columns(3)
-            col_a.metric("Total Penjualan", f"Rp {total_jual:,.0f}")
-            col_b.metric("Total Pengeluaran", f"Rp {total_keluar:,.0f}")
-            col_c.metric("Laba Bersih", f"Rp {laba_bersih:,.0f}")
+        st.dataframe(hari_ini_df.sort_values(by="Tanggal", ascending=False), use_container_width=True)
 
-            st.markdown(f"### 📄 Data Transaksi Bulan {selected_month}")
-            st.dataframe(month_df.sort_values(by="Tanggal", ascending=False), use_container_width=True)
-
+        # ================= FILTER MANUAL ==================
         st.markdown("---")
-        st.markdown("### 📄 Data Transaksi Hari Ini")
-        st.dataframe(filtered_df.sort_values(by="Tanggal", ascending=False), use_container_width=True)
+        st.subheader("🔍 Filter Manual")
+
+        filter_mode = st.radio("Filter berdasarkan:", ["Per Tanggal", "Per Bulan"], horizontal=True)
+
+        if filter_mode == "Per Tanggal":
+            selected_date = st.date_input("Pilih Tanggal")
+            if selected_date:
+                filtered = df[df["Tanggal"].dt.date == selected_date]
+        else:
+            bulan = st.selectbox("Pilih Bulan", sorted(df["Tanggal"].dt.strftime("%Y-%m").unique(), reverse=True))
+            filtered = df[df["Tanggal"].dt.strftime("%Y-%m") == bulan]
+
+        if 'filtered' in locals() and not filtered.empty:
+            total_jual_f = filtered[filtered["Kategori"] == "Penjualan"]["Total"].sum()
+            total_keluar_f = filtered[filtered["Kategori"] == "Pengeluaran"]["Total"].sum()
+            laba_bersih_f = total_jual_f - total_keluar_f
+
+            col1, col2, col3 = st.columns(3)
+            col1.metric("Total Penjualan", f"Rp {total_jual_f:,.0f}")
+            col2.metric("Total Pengeluaran", f"Rp {total_keluar_f:,.0f}")
+            col3.metric("Laba Bersih", f"Rp {laba_bersih_f:,.0f}")
+
+            st.dataframe(filtered.sort_values(by="Tanggal", ascending=False), use_container_width=True)
+        elif 'filtered' in locals():
+            st.warning("Tidak ada data untuk periode yang dipilih.")
 
 if __name__ == "__main__":
     show()
