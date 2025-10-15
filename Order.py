@@ -7,6 +7,7 @@ from oauth2client.service_account import ServiceAccountCredentials
 import json
 import requests
 import urllib.parse
+import streamlit.components.v1 as components
 
 # ================= CONFIG ==================
 SPREADSHEET_ID = "1OsnO1xQFniBtEFCvGksR2KKrPt-9idE-w6-poM-wXKU"
@@ -20,7 +21,10 @@ DATA_FILE = "service_data.csv"  # cache lokal
 TELEGRAM_TOKEN = "7656007924:AAGi1it2M7jE0Sen28myiPhEmYPd1-jsI_Q"
 TELEGRAM_CHAT_ID = "6122753506"
 
-def send_telegram_notification(service_data):
+def send_telegram_notification(service_data, timeout=6):
+    """
+    Kirim notifikasi Telegram. Mengembalikan tuple (ok: bool, message: str).
+    """
     try:
         msg = f"""🔔 *Servis Baru Masuk!*
 
@@ -33,9 +37,15 @@ def send_telegram_notification(service_data):
             "text": msg,
             "parse_mode": "Markdown"
         }
-        requests.post(url, json=payload, timeout=5)
+        res = requests.post(url, json=payload, timeout=timeout)
+        if res.status_code != 200:
+            return False, f"HTTP {res.status_code}: {res.text}"
+        data = res.json()
+        if not data.get("ok", False):
+            return False, str(data)
+        return True, "Terkirim"
     except Exception as e:
-        print("Gagal kirim Telegram:", e)
+        return False, str(e)
 
 # =============== AUTH GOOGLE ===============
 def authenticate_google():
@@ -183,7 +193,7 @@ def sync_local_cache():
 
 # =============== ESC/POS PRINT HELPERS ===============
 # NOTE: server harus meng-install `python-escpos` (pip install python-escpos)
-# and printer must be accessible by server (USB or network).
+# and printer must be accessible by server (USB atau network).
 try:
     from escpos.printer import Usb, Network
     ESC_POS_AVAILABLE = True
@@ -293,6 +303,28 @@ def build_barang_print_lines(cfg, transaksi_data, now_dt):
     lines.append(now_dt.strftime("%d/%m/%Y %H:%M"))
     return lines
 
+# =============== UTIL: PRINT PREVIEW OPEN ===============
+def open_print_preview_in_new_tab(html_content):
+    """
+    Buka print preview di tab baru. Menggunakan data URL dan components.html untuk
+    memicu klik pada anchor (workaround di Streamlit).
+    """
+    data_url = "data:text/html;charset=utf-8," + urllib.parse.quote(html_content)
+    js = f"""
+    <html>
+      <body>
+        <a id="open_link" href="{data_url}" target="_blank" rel="noopener"></a>
+        <script>
+          const a = document.getElementById('open_link');
+          // try to open new tab
+          a.click();
+        </script>
+      </body>
+    </html>
+    """
+    # Komponen akan mengeksekusi script dalam iframe — klik anchor ini biasanya akan membuka tab baru.
+    components.html(js, height=10)
+
 # =============== PAGE APP ===============
 def show():
     cfg = load_config()
@@ -348,22 +380,24 @@ def show():
             df = pd.concat([df, pd.DataFrame([service_data])], ignore_index=True)
 
             # pastikan header "Status Antrian" ada di sheet sebelum append
+            append_exception = None
             try:
                 append_to_sheet(SHEET_SERVIS, service_data)
                 df.loc[df["No Nota"] == nota, "uploaded"] = True
                 st.success(f"✅ Servis {barang} berhasil disimpan ke Google Sheet!")
             except Exception as e:
+                append_exception = e
                 st.warning(f"⚠️ Gagal upload ke Sheet: {e}. Disimpan lokal dulu.")
             save_local_data(df)
 
             # === Kirim Notif Telegram ===
-            try:
-                send_telegram_notification(service_data)
+            ok, msg = send_telegram_notification(service_data)
+            if ok:
                 st.info("🔔 Notifikasi Telegram terkirim.")
-            except Exception as e:
-                st.warning(f"⚠️ Gagal kirim notifikasi Telegram: {e}")
+            else:
+                st.error(f"⚠️ Gagal kirim notifikasi Telegram: {msg}")
 
-            # === Buat link Print Preview: buka tab baru berisi HTML dan auto-trigger print() ===
+            # === Buat HTML nota untuk preview/print ===
             html_nota = f"""
             <html>
             <head>
@@ -404,8 +438,16 @@ def show():
             </body>
             </html>
             """
-            data_url = "data:text/html;charset=utf-8," + urllib.parse.quote(html_nota)
-            st.markdown(f"[🖨️ Buka Print Preview Nota di Tab Baru]({data_url})", unsafe_allow_html=True)
+
+            # === Buka print preview di tab baru secara otomatis ===
+            try:
+                open_print_preview_in_new_tab(html_nota)
+                st.info("🖨️ Print preview terbuka di tab baru (cek pop-up/blocker jika tidak muncul).")
+            except Exception as e:
+                st.error(f"⚠️ Gagal membuka print preview otomatis: {e}")
+                # fallback: berikan link download / data-url agar user klik manual
+                data_url = "data:text/html;charset=utf-8," + urllib.parse.quote(html_nota)
+                st.markdown(f"[🖨️ Buka Print Preview Nota di Tab Baru]({data_url})", unsafe_allow_html=True)
 
             # === TOMBOL DOWNLOAD HTML (opsional) ===
             st.download_button("📥 Download Nota (HTML)", data=html_nota,
