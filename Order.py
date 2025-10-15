@@ -423,7 +423,7 @@ def show():
             }}
             </style>
             </head>
-            <body onload="window.print();window.onafterprint=()=>window.location.reload();">
+            <body onload="window.print();window.close();">
             <h2>{cfg['nama_toko']}</h2>
             <div>{cfg['alamat']}<br/>HP: {cfg['telepon']}</div>
             <hr/>
