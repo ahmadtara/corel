@@ -18,8 +18,8 @@ CONFIG_FILE = "config.json"
 DATA_FILE = "service_data.csv"  # cache lokal
 
 # =============== TELEGRAM NOTIF ===============
-TELEGRAM_TOKEN = "7656007924:AAGi1it2M7jE0Sen28myiPhEmYPd1-jsI_Q"
-TELEGRAM_CHAT_ID = "6122753506"
+TELEGRAM_TOKEN = "8416886891:AAENVBNKp1nUPHFWGHrSNv9VwdBQz4ljNeA"
+TELEGRAM_CHAT_ID = "6791624792"
 
 def send_telegram_notification(service_data, timeout=6):
     """
